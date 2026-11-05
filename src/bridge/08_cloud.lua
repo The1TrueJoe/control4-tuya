@@ -91,11 +91,27 @@ local function GetToken(callback)
 			callback(true)
 		else
 			CLOUD.ready = false
-			local why = err or (json and (tostring(json.msg) .. ' (' .. tostring(json.code) .. ')')) or 'no answer'
+			local why = err or Explain(json)
 			Status('Sign-in failed: ' .. why)
 			callback(false, why)
 		end
 	end)
+end
+
+-- Tuya answers that say "fix this in the Tuya console", reworded as what to do there.
+local HINTS = {
+	['28841107'] = 'Tuya says the project can\'t use its data center. In the Tuya IoT console: start or extend '
+		.. 'the IoT Core trial (Cloud Services), authorize IoT Core for this project (Service API tab), and check '
+		.. 'the data center is enabled (Overview)',
+	['1106'] = 'Tuya says permission denied: link your Smart Life account to the project (Devices > Link App Account)',
+	['1004'] = 'Tuya rejected the signature: check Cloud Access ID and Secret',
+}
+
+local function Explain(json, fallback)
+	if (json and HINTS[tostring(json.code)]) then
+		return HINTS[tostring(json.code)] .. ' (' .. tostring(json.code) .. ')'
+	end
+	return fallback or (json and (tostring(json.msg) .. ' (' .. tostring(json.code) .. ')')) or 'no answer'
 end
 
 -- Rate-limit and quota answers (Tuya codes 40000309 / "frequency" messages) back off for ten
@@ -123,7 +139,7 @@ local function Api(method, path, body, callback, retried)
 			Api(method, path, body, callback, true)
 		else
 			if (Throttled(json)) then CLOUD.backoffUntil = os.time() + BACKOFF_S end
-			callback(nil, err or (json and (tostring(json.msg) .. ' (' .. tostring(json.code) .. ')')) or 'no answer')
+			callback(nil, err or Explain(json))
 		end
 	end)
 end

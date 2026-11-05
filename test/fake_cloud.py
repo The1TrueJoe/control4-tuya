@@ -27,6 +27,7 @@ class FakeCloud:
         self.calls = []  # (method, path)
         self.commands = []  # (id, [{"code","value"}])
         self.page_size_seen = None
+        self.suspended = False  # answer device calls the way a project without IoT Core does
 
     def add(self, dev_id, name, key, kind="plug", online=True, **status):
         spec = PLUG_SPEC if kind == "plug" else LIGHT_SPEC
@@ -61,6 +62,8 @@ class FakeCloud:
         if headers.get("access_token") != self.token or not self._check_sign(method, path, headers, body, True):
             return 200, json.dumps({"success": False, "code": 1004, "msg": "sign invalid"})
 
+        if self.suspended:
+            return 200, json.dumps({"success": False, "code": 28841107, "msg": "No permission. The data center is suspended."})
         if u.path == "/v1.0/iot-01/associated-users/devices":
             q = dict(parse_qsl(u.query))
             size = int(q.get("size", 20))

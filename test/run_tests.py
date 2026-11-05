@@ -464,6 +464,15 @@ def bad_cloud_secret_is_reported():
 
 
 @test
+def suspended_data_center_says_what_to_do():
+    cloud = FakeCloud(CLOUD_ID, CLOUD_SECRET)
+    cloud.suspended = True
+    d, bridge = cloud_bridge(cloud)
+    assert d.run(2, lambda: "IoT Core" in (bridge.properties.get("Cloud Status") or "")), bridge.properties
+    assert "28841107" in bridge.properties["Cloud Status"]
+
+
+@test
 def bridge_restores_devices_after_a_restart_without_the_cloud():
     cloud = FakeCloud(CLOUD_ID, CLOUD_SECRET)
     cloud.add(DEV, "Porch Plug", KEY, "plug")
