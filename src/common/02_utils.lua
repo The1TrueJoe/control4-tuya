@@ -54,6 +54,7 @@ function SetTimer(ms, fn, rep)
 		local ok, err = pcall(fn, timer)
 		if (not ok) then
 			print(LOG_PREFIX .. 'timer error: ' .. tostring(err))
+			UpdateDriverProperty('Last Error', 'driver error: ' .. tostring(err))
 		end
 	end, rep or false)
 end

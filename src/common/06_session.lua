@@ -197,9 +197,20 @@ function StartSession()
 	CONN = conn
 	SetConnectionStatus('Connecting')
 
+	-- An error inside a socket callback is otherwise only visible in Composer's Lua output;
+	-- drop the connection and say what broke instead of sitting "Online" doing nothing.
+	local function Guarded(fn)
+		return function(...)
+			local ok, err = pcall(fn, ...)
+			if (not ok) then
+				Lost(conn, 'driver error: ' .. tostring(err))
+			end
+		end
+	end
+
 	local client = C4:CreateTCPClient()
 	conn.client = client
-	client:OnConnect(function(c)
+	client:OnConnect(Guarded(function(c)
 		if (CONN ~= conn) then c:Close() return end
 		if (DEVICE.version >= 3.4) then
 			conn.negotiating = true
@@ -209,8 +220,8 @@ function StartSession()
 			Ready(conn)
 		end
 		c:ReadAtLeast(1)
-	end)
-	client:OnRead(function(c, data)
+	end))
+	client:OnRead(Guarded(function(c, data)
 		if (CONN ~= conn) then return end
 		local frames
 		local key = conn.negotiating and DEVICE.key or conn.key
@@ -220,7 +231,7 @@ function StartSession()
 			HandleFrame(conn, frame)
 		end
 		if (CONN == conn) then c:ReadAtLeast(1) end
-	end)
+	end))
 	client:OnDisconnect(function(c, code, msg)
 		Lost(conn, 'device closed the connection')
 	end)
