@@ -20,13 +20,24 @@ check_lua() {
   fi
 }
 
-# Which source folders make up each driver.
+# Separate library repos, checked out next to this one (or set the variable).
+AES_GCM="${C4_AES_GCM:-../control4-aes-gcm}"
+
+# Which source folders make up each driver, and which library files it adds.
 sources() {
   case "$1" in
     light|plug) echo "src/common src/child src/$1" ;;
     bridge) echo "src/common src/bridge" ;;
   esac
 }
+libraries() {
+  case "$1" in
+    bridge) echo "$AES_GCM/aes_gcm.lua" ;;
+  esac
+}
+for lib in $(libraries bridge); do
+  [ -f "$lib" ] || { echo "missing $lib: clone control4-aes-gcm next to this repo or set C4_AES_GCM" >&2; exit 1; }
+done
 
 for variant in light plug bridge; do
   dir="drivers/$variant"
@@ -40,6 +51,11 @@ for variant in light plug bridge; do
       echo
       echo "-- ${f}"
       sed "s/^DRIVER_VERSION = .*/DRIVER_VERSION = '${VERSION}'/" "$f"
+    done
+    for lib in $(libraries "$variant"); do
+      echo
+      echo "-- $(basename "$lib") (from $(basename "$(dirname "$lib")"))"
+      cat "$lib"
     done
   } > "$out"
   check_lua "$out"

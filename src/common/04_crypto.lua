@@ -1,4 +1,4 @@
--- AES-128-ECB and HMAC-SHA256 through Director's crypto API.
+-- AES-128-ECB, HMAC-SHA256, SHA-256, MD5 and Base64 through Director's crypto API.
 --
 -- Padding is always done here (Pkcs7Pad/Pkcs7Unpad) and Director is told not to pad, so the
 -- bytes on the wire do not depend on how a given OS release interprets `padding`.
@@ -41,4 +41,20 @@ function Sha256Hex(data)
 		error('SHA-256 unavailable on this controller')
 	end
 	return ToHex(out)
+end
+
+function Md5Hex(data)
+	local out = C4:Hash('MD5', data or '', HASH_OPTS)
+	if (not out or #out ~= 16) then
+		error('MD5 unavailable on this controller')
+	end
+	return ToHex(out)
+end
+
+function Base64Encode(data)
+	return C4:Base64Encode(data)
+end
+
+function Base64Decode(data)
+	return C4:Base64Decode(data)
 end
