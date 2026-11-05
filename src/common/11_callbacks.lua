@@ -13,6 +13,7 @@ function OnDriverLateInit(driverInitType)
 		ApplyProperty(name)
 	end
 	LATE_INIT_DONE = true
+	if (OnVariantInit) then OnVariantInit() end
 	StartSession()
 end
 

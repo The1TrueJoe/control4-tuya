@@ -5,8 +5,8 @@
 	<model>Tuya Plug (Local)</model>
 	<creator>Joseph Telaak</creator>
 	<created>11/04/2026 00:00</created>
-	<modified>11/04/2026 23:10</modified>
-	<version>1</version>
+	<modified>11/05/2026 17:11</modified>
+	<version>3</version>
 	<control>lua_gen</control>
 	<controlmethod>ip</controlmethod>
 	<driver>DriverWorks</driver>

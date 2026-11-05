@@ -82,6 +82,14 @@ function OnDpsChanged(changed)
 	TellState()
 end
 
+-- The variables exist from startup (not only once a reading arrives) so programming can be
+-- written against them before the plug has reported anything.
+function OnVariantInit()
+	if (PLUG.meteringSetting ~= 'None') then
+		EnsureVariables()
+	end
+end
+
 function OnDeviceOnline(online)
 	if (online) then
 		PLUG.told = nil

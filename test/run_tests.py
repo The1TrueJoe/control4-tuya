@@ -112,6 +112,14 @@ def plug_reports_power_after_refresh():
 
 
 @test
+def plug_variables_exist_before_any_reading():
+    fake = FakeTuya(DEV, KEY, 3.3, {"1": False})
+    h = driver(PLUG, fake)
+    assert {"POWER_W", "VOLTAGE_V", "CURRENT_MA"} <= set(h.variables), h.variables
+    fake.close()
+
+
+@test
 def plug_switch_dp_for_second_gang():
     fake = FakeTuya(DEV, KEY, 3.3, {"1": False, "2": False})
     h = driver(PLUG, fake, **{"Switch DP": "2"})
