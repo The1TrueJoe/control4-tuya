@@ -170,7 +170,8 @@ end
 -- Child properties that belong to the bridge link. Returns true when handled.
 function ApplyBridgeProperty(name, value)
 	if (name == 'Tuya Device') then
-		local id = string.match(value or '', '%(([^()]+)%)%s*$')
+		-- "(none)" is the list's empty choice, not a device whose ID is "none".
+		local id = (value ~= NONE) and string.match(value or '', '%(([^()]+)%)%s*$') or nil
 		if (id and id ~= DEVICE.id) then
 			DEVICE.id = id
 			UpdateDriverProperty('Device ID', id)

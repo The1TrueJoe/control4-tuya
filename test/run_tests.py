@@ -343,6 +343,22 @@ def bridge_hands_lan_address_to_child_and_follows_dhcp_change():
 
 
 @test
+def bridge_fills_ip_for_a_typed_device_id_and_none_is_not_an_id():
+    fake = FakeTuya(DEV, KEY, 3.3, {"1": False})
+    d, bridge = bridge_setup()
+    c = child(d, PLUG, fake, **{"Local Key": KEY})
+    d.run(1)
+    assert c.properties.get("Device ID", "") == "", c.properties
+    assert c.status() == "Not Configured", c.properties
+    bridge.broadcast(fake.broadcast_packet("127.0.0.1"), "127.0.0.1")
+    d.run(0.5)
+    c.set_property("Device ID", DEV)
+    assert d.run(4, lambda: c.status() == "Online"), (c.properties, bridge.properties)
+    assert c.properties.get("Device IP") == "127.0.0.1"
+    fake.close()
+
+
+@test
 def bridge_decodes_a_repeated_broadcast_once():
     fake = FakeTuya(DEV, KEY, 3.3, {"1": False})
     d, bridge = bridge_setup()

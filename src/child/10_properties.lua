@@ -25,6 +25,11 @@ function ApplyProperty(name)
 		DEVICE.ip = Trim(value)
 	elseif (name == 'Device ID') then
 		DEVICE.id = Trim(value)
+		-- Typed in rather than picked from the list: the bridge still fills IP and key.
+		if (LATE_INIT_DONE and BRIDGE and BRIDGE.id) then
+			BRIDGE.watching = nil
+			BridgeHello()
+		end
 	elseif (name == 'Local Key') then
 		-- Not trimmed beyond whitespace: a local key may contain any printable character.
 		DEVICE.key = Trim(value)
