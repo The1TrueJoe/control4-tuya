@@ -41,7 +41,7 @@ def unpad(b):
 
 
 class FakeTuya:
-    def __init__(self, dev_id, key, version=3.3, dps=None, port=0, device22=False):
+    def __init__(self, dev_id, key, version=3.3, dps=None, port=0, device22=False, host="127.0.0.1"):
         self.id = dev_id
         self.real_key = key.encode()
         self.version = version
@@ -50,7 +50,7 @@ class FakeTuya:
         self.log = []  # (cmd, decoded payload) received
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(("127.0.0.1", port))
+        self.sock.bind((host, port))
         self.sock.listen(4)
         self.port = self.sock.getsockname()[1]
         self.conn = None
