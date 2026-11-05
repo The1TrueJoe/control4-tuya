@@ -22,12 +22,13 @@ local function ChildFields(d)
 		VERSION = d.version or '',
 		NAME = d.name or '',
 		CATEGORY = d.category or '',
-		CLOUD = (CLOUD and CLOUD.ready and d.key) and '1' or '0',
+		-- The device is in a linked account, so the bridge can control it through the cloud.
+		CLOUD = (d.cloud and CLOUD and CLOUD.ready) and '1' or '0',
 	}
 end
 
 local function Fingerprint(d)
-	return table.concat({ d.ip or '', d.key or '', d.version or '', d.name or '' }, '|')
+	return table.concat({ d.ip or '', d.key or '', d.version or '', d.name or '', tostring(d.cloud and CLOUD and CLOUD.ready) }, '|')
 end
 
 -- Director keeps PersistSetValue data with the project, so a reboot does not need the cloud
@@ -39,7 +40,7 @@ local function SaveSoon()
 		local list = {}
 		for id, d in pairs(REGISTRY.devices) do
 			list[#list + 1] = { id = id, ip = d.ip, key = d.key, version = d.version, name = d.name,
-				category = d.category, product = d.product, productKey = d.productKey }
+				category = d.category, product = d.product, productKey = d.productKey, cloud = d.cloud }
 		end
 		pcall(function() C4:PersistSetValue(PERSIST_KEY, list) end)
 	end)

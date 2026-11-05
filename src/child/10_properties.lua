@@ -30,15 +30,18 @@ function ApplyProperty(name)
 		DEVICE.key = Trim(value)
 	elseif (name == 'Protocol Version') then
 		local v, err = ParseVersion(value)
+		DEVICE.localUnsupported = (Trim(value) == '3.5') or nil
 		if (v) then
 			DEVICE.version = v
-		else
+		elseif (not DEVICE.localUnsupported) then
 			UpdateDriverProperty('Last Error', err)
 		end
 	elseif (name == 'Poll Interval (seconds)') then
 		StartPolling(value)
 	elseif (name == 'Debug Mode') then
 		DEBUGPRINT = (value == 'On')
+	elseif (ApplyBridgeProperty and ApplyBridgeProperty(name, value)) then
+		return false
 	elseif (ApplyVariantProperty) then
 		ApplyVariantProperty(name, value)
 	end

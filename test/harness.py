@@ -104,8 +104,65 @@ class TcpClient:
             self.h.call(self.cb.get("read"), self, data)
 
 
+class UrlTransfer:
+    """C4:url(): routed to the Director's `web` handler (a fake cloud), answered asynchronously."""
+
+    def __init__(self, h):
+        self.h = h
+        self.done = None
+
+    def SetOptions(self, *a): return self
+    def OnDone(self, *a):
+        self.done = a[-1]
+        return self
+
+    def _send(self, method, url, body, headers):
+        hd = self.h.from_lua(headers) if lua51.lua_type(headers) == "table" else {}
+        code, text = self.h.director.web(method, b(url).decode(), hd, b(body or b"").decode())
+        responses = self.h.to_lua([{"code": code, "body": text}])
+        self.h.later(lambda: self.done and self.done(self, responses, 0, b""))
+        return self
+
+    def Get(self, *a):
+        if lua51.lua_type(a[-1]) == "table":
+            return self._send("GET", a[-2], b"", a[-1])
+        return self._send("GET", a[-1], b"", None)
+    def Post(self, *a): return self._send("POST", a[-3], a[-2], a[-1])
+
+
+class Director:
+    """Several drivers on one controller: each in its own Lua state, with SendToDevice,
+    GetDevicesByC4iName and per-driver persistence between them."""
+
+    def __init__(self, web=None):
+        self.drivers = {}
+        self.next_id = 100
+        self.web = web or (lambda *a: (404, "{}"))
+
+    def add(self, driver_lua, properties, filename):
+        h = Harness(driver_lua, properties, director=self, filename=filename)
+        return h
+
+    def run(self, seconds=0.2, until=None):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if until and until():
+                return True
+            for h in list(self.drivers.values()):
+                h.step(0.005)
+        return bool(until and until())
+
+
 class Harness:
-    def __init__(self, driver_lua, properties):
+    def __init__(self, driver_lua, properties, director=None, filename="driver.c4z"):
+        self.director = director or Director()
+        self.id = self.director.next_id
+        self.director.next_id += 1
+        self.director.drivers[self.id] = self
+        self.filename = filename
+        self.persist = {}
+        self.property_lists = {}
+        self.servers = []
         self.lua = lua51.LuaRuntime(encoding=None, unpack_returned_tuples=True)
         self.sel = selectors.DefaultSelector()
         self.timers = []
@@ -123,7 +180,7 @@ class Harness:
     # --- Lua <-> Python ------------------------------------------------------------------
     def to_lua(self, v):
         if isinstance(v, dict):
-            return self.lua.table_from({b(k): self.to_lua(x) for k, x in v.items() if x is not None})
+            return self.lua.table_from({(k if isinstance(k, int) else b(k)): self.to_lua(x) for k, x in v.items() if x is not None})
         if isinstance(v, list):
             return self.lua.table_from([self.to_lua(x) for x in v])
         if isinstance(v, str):
@@ -132,7 +189,10 @@ class Harness:
 
     def from_lua(self, v):
         if lua51.lua_type(v) == "table":
-            return {(k.decode() if isinstance(k, bytes) else k): self.from_lua(x) for k, x in v.items()}
+            items = list(v.items())
+            if items and all(isinstance(k, int) for k, _ in items) and sorted(k for k, _ in items) == list(range(1, len(items) + 1)):
+                return [self.from_lua(x) for _, x in sorted(items, key=lambda kv: kv[0])]
+            return {(k.decode() if isinstance(k, bytes) else k): self.from_lua(x) for k, x in items}
         if isinstance(v, bytes):
             return v.decode(errors="replace")
         return v
@@ -163,7 +223,10 @@ class Harness:
             return t
 
         def json_decode(_, text):
-            return h.to_lua(json.loads(b(text).decode()))
+            try:
+                return h.to_lua(json.loads(b(text).decode()))
+            except ValueError:
+                return None
 
         def send_to_proxy(_, binding, command, params, kind=None):
             p = h.from_lua(params) if lua51.lua_type(params) == "table" else params
@@ -179,7 +242,42 @@ class Harness:
         def set_variable(_, name, value):
             h.variables[b(name).decode()] = b(value).decode()
 
+        def send_to_device(_, device_id, command, params=None, *a):
+            target = h.director.drivers.get(int(device_id))
+            if target is None:
+                return
+            p = h.from_lua(params) if lua51.lua_type(params) == "table" else {}
+            cmd = b(command)
+            target.later(lambda: target.g("ExecuteCommand")(cmd, target.to_lua(p)))
+
+        def devices_by_name(_, filename):
+            return h.to_lua({d.id: d.filename for d in h.director.drivers.values() if d.filename == b(filename).decode()})
+
+        def persist_set(_, key, value):
+            h.persist[b(key).decode()] = json.loads(json.dumps(h.from_lua(value), default=str))
+
+        def persist_get(_, key):
+            v = h.persist.get(b(key).decode())
+            return None if v is None else h.to_lua(v)
+
+        def create_server(_, port, delim=b"", udp=False):
+            h.servers.append(int(port))
+            return len(h.servers)
+
+        def update_property_list(_, name, items, default=None):
+            h.property_lists[b(name).decode()] = b(items).decode()
+
         return lua.table_from({
+            b"SendToDevice": send_to_device,
+            b"GetDevicesByC4iName": devices_by_name,
+            b"GetDeviceID": lambda _: h.id,
+            b"PersistSetValue": persist_set,
+            b"PersistGetValue": persist_get,
+            b"CreateServer": create_server,
+            b"DestroyServer": lambda *a: h.servers.clear(),
+            b"UpdatePropertyList": update_property_list,
+            b"Hash": lambda _, alg, d, o=None: hashlib.sha256(b(d)).digest(),
+            b"url": lambda _: UrlTransfer(h),
             b"Encrypt": lambda _, c, k, iv, d, o=None: aes(c, k, iv, d, True),
             b"Decrypt": lambda _, c, k, iv, d, o=None: aes(c, k, iv, d, False),
             b"HMAC": lambda _, alg, k, d, o=None: hmac.new(b(k), b(d), hashlib.sha256).digest(),
@@ -208,11 +306,26 @@ class Harness:
         self.lua.globals().Properties[name.encode()] = b(value)
         self.g("OnPropertyChanged")(name.encode())
 
+    def later(self, fn):
+        """Run fn on this driver's next turn, as Director delivers messages and HTTP answers."""
+        t = Timer(self, time.monotonic(), 0, lambda _t: fn(), False)
+        heapq.heappush(self.timers, (t.due, next(self.counter), t))
+
+    def broadcast(self, data, ip):
+        self.g("OnServerDataIn")(1, data, ip.encode(), b"40000")
+
     def run(self, seconds=0.2, until=None):
+        if len(self.director.drivers) > 1:
+            return self.director.run(seconds, until)
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             if until and until():
                 return True
+            self.step(0.02)
+        return bool(until and until())
+
+    def step(self, max_wait):
+        if True:
             now = time.monotonic()
             while self.timers and self.timers[0][0] <= now:
                 _, _, t = heapq.heappop(self.timers)
@@ -222,14 +335,13 @@ class Harness:
                 if t.repeat and not t.cancelled:
                     t.due = now + t.ms / 1000
                     heapq.heappush(self.timers, (t.due, next(self.counter), t))
-            timeout = 0.02
+            timeout = max_wait
             if self.timers:
                 timeout = max(0, min(timeout, self.timers[0][0] - time.monotonic()))
             for key, mask in (self.sel.select(timeout) if self.sel.get_map() else []):
                 key.data._event(mask)
             if not self.sel.get_map():
                 time.sleep(timeout)
-        return bool(until and until())
 
     def status(self):
         return self.properties.get("Connection Status")

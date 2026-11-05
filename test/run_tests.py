@@ -12,11 +12,13 @@ import traceback
 sys.path.insert(0, os.path.dirname(__file__))
 
 from fake_tuya import FakeTuya  # noqa: E402
-from harness import Harness  # noqa: E402
+from harness import Director, Harness  # noqa: E402
+from fake_cloud import FakeCloud  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIGHT = os.path.join(ROOT, "drivers/light/driver.lua")
 PLUG = os.path.join(ROOT, "drivers/plug/driver.lua")
+BRIDGE = os.path.join(ROOT, "drivers/bridge/driver.lua")
 KEY = "0123456789abcdef"
 DEV = "bf0123456789abcdefgh"
 
@@ -298,6 +300,167 @@ def unsupported_protocol_is_refused_by_name():
     h = Harness(PLUG, {"Device IP": "127.0.0.1", "Device ID": DEV, "Local Key": KEY, "Protocol Version": "3.5"})
     h.init()
     assert "3.5" in (h.properties.get("Last Error") or ""), h.properties
+
+# --- bridge ------------------------------------------------------------------------------------
+def bridge_setup(cloud=None, **bridge_props):
+    d = Director(web=cloud)
+    props = {"Discovery": "On", "Debug Mode": "On", "Cloud Region": "US", "Cloud Poll Interval (seconds)": "120",
+             "Key Refresh (hours)": "12"}
+    props.update(bridge_props)
+    bridge = d.add(BRIDGE, props, "tuya_bridge.c4z")
+    bridge.init()
+    return d, bridge
+
+
+def child(d, path, fake=None, **props):
+    base = {"Protocol Version": "3.3", "Poll Interval (seconds)": "60", "Debug Mode": "On",
+            "Tuya Device": "(none)", "Control Path": "Auto", "Device IP": "", "Device ID": "", "Local Key": ""}
+    base.update(props)
+    c = d.add(path, base, "tuya_plug.c4z" if path == PLUG else "tuya_light.c4z")
+    if fake:
+        c.lua.globals().TUYA_PORT = fake.port
+    c.init()
+    return c
+
+
+@test
+def bridge_hands_lan_address_to_child_and_follows_dhcp_change():
+    fake = FakeTuya(DEV, KEY, 3.3, {"1": False})
+    d, bridge = bridge_setup()
+    assert bridge.servers == [6666, 6667, 7000], bridge.servers
+    c = child(d, PLUG, fake, **{"Device ID": DEV, "Local Key": KEY})
+    assert d.run(2, lambda: c.status() == "Waiting for the bridge"), c.properties
+    bridge.broadcast(fake.broadcast_packet("127.0.0.1"), "127.0.0.1")
+    assert d.run(4, lambda: c.status() == "Online"), (c.properties, bridge.properties)
+    assert c.properties.get("Device IP") == "127.0.0.1"
+    # The device moves (new DHCP lease): the child follows without anyone touching it.
+    # ("localhost" stands in for a new address: macOS has no 127.0.0.2.)
+    fake2 = FakeTuya(DEV, KEY, 3.3, {"1": True})
+    c.lua.globals().TUYA_PORT = fake2.port
+    bridge.broadcast(fake2.broadcast_packet("localhost"), "localhost")
+    assert d.run(6, lambda: c.properties.get("Device IP") == "localhost" and level(c) == 100), (c.properties, c.notifies[-3:])
+    fake.close(); fake2.close()
+
+
+@test
+def bridge_decodes_a_repeated_broadcast_once():
+    fake = FakeTuya(DEV, KEY, 3.3, {"1": False})
+    d, bridge = bridge_setup()
+    calls = {"n": 0}
+    real = bridge.g("AesDecrypt")
+    def counting(*a):
+        calls["n"] += 1
+        return real(*a)
+    bridge.lua.globals().AesDecrypt = counting
+    pkt = fake.broadcast_packet("10.0.0.50")
+    for _ in range(200):
+        bridge.broadcast(pkt, "10.0.0.50")
+    assert calls["n"] == 1, calls
+    assert "1 known" in bridge.properties.get("Devices", ""), bridge.properties
+    fake.close()
+
+
+CLOUD_ID, CLOUD_SECRET = "testclientid0001", "testsecret0000000000000000000001"
+
+
+def cloud_bridge(cloud, **extra):
+    return bridge_setup(cloud, **{"Cloud Access ID": CLOUD_ID, "Cloud Access Secret": CLOUD_SECRET, **extra})
+
+
+@test
+def bridge_gets_names_and_keys_from_the_cloud_and_child_picks_from_the_list():
+    cloud = FakeCloud(CLOUD_ID, CLOUD_SECRET)
+    cloud.add(DEV, "Porch Plug", KEY, "plug")
+    cloud.add("bfotherplug000000001", "Garage Plug", "fedcba9876543210", "plug")
+    fake = FakeTuya(DEV, KEY, 3.3, {"1": False})
+    d, bridge = cloud_bridge(cloud)
+    assert d.run(3, lambda: (bridge.properties.get("Cloud Status") or "").startswith("OK: 2 devices")), bridge.properties
+    c = child(d, PLUG, fake)
+    assert d.run(3, lambda: "Porch Plug (" + DEV + ")" in c.property_lists.get("Tuya Device", "")), c.property_lists
+    bridge.broadcast(fake.broadcast_packet("127.0.0.1"), "127.0.0.1")
+    c.set_property("Tuya Device", "Porch Plug (" + DEV + ")")
+    assert d.run(4, lambda: c.status() == "Online"), (c.properties, bridge.properties)
+    assert c.properties.get("Local Key") == KEY and c.properties.get("Device ID") == DEV
+    assert cloud.commands == [], "LAN-reachable device was controlled through the cloud"
+    fake.close()
+
+
+@test
+def cloud_only_device_is_controlled_through_the_bridge_with_batched_polls():
+    cloud = FakeCloud(CLOUD_ID, CLOUD_SECRET)
+    cloud.add("bfremoteplug00000001", "Shed Plug", "1111222233334444", "plug", cur_power=125)
+    cloud.add("bfremotelight0000001", "Shed Light", "5555666677778888", "light")
+    d, bridge = cloud_bridge(cloud)
+    assert d.run(3, lambda: "OK: 2" in (bridge.properties.get("Cloud Status") or ""))
+    plug = child(d, PLUG)
+    light = child(d, LIGHT)
+    plug.set_property("Tuya Device", "Shed Plug (bfremoteplug00000001)")
+    light.set_property("Tuya Device", "Shed Light (bfremotelight0000001)")
+    # Never seen on the LAN: Auto goes to the cloud.
+    assert d.run(4, lambda: plug.status() == "Online (cloud)" and light.status() == "Online (cloud)"), (plug.properties, light.properties)
+    assert d.run(3, lambda: plug.properties.get("Power (W)") == "12.5"), plug.properties
+    plug.proxy("ON")
+    assert d.run(3, lambda: cloud.commands and cloud.commands[-1] == ("bfremoteplug00000001", [{"code": "switch_1", "value": True}])), cloud.commands
+    light.proxy("SET_COLOR_TARGET", LIGHT_COLOR_TARGET_X=0.64, LIGHT_COLOR_TARGET_Y=0.33, LIGHT_COLOR_TARGET_MODE=0)
+    def colour_sent():
+        for dev, cmds in cloud.commands:
+            for c in cmds:
+                if dev == "bfremotelight0000001" and c["code"] == "colour_data_v2" and isinstance(c["value"], dict):
+                    return c["value"]
+    assert d.run(3, colour_sent), cloud.commands
+    assert colour_sent()["s"] >= 990, colour_sent()
+    # The confirm fetch brings the new state back to the plug.
+    assert d.run(8, lambda: level(plug) == 100), plug.notifies[-3:]
+    # Polling: one request serves every watched device.
+    bridge.lua.globals().CLOUD.pollSeconds = 0.5
+    bridge.g("CloudWatch")(b"bfremoteplug00000001", str(plug.id).encode(), True)
+    before = len(cloud.calls)
+    d.run(2.2)
+    polls = [c for c in cloud.calls[before:] if "associated-users" in c[1]]
+    assert 3 <= len(polls) <= 5 and len(cloud.calls[before:]) == len(polls), cloud.calls[before:]
+    assert cloud.page_size_seen == 50
+
+
+@test
+def auto_path_moves_back_to_the_lan_when_the_device_appears():
+    cloud = FakeCloud(CLOUD_ID, CLOUD_SECRET)
+    cloud.add(DEV, "Porch Plug", KEY, "plug")
+    d, bridge = cloud_bridge(cloud)
+    d.run(2, lambda: "OK" in (bridge.properties.get("Cloud Status") or ""))
+    fake = FakeTuya(DEV, KEY, 3.3, {"1": False})
+    c = child(d, PLUG, fake)
+    c.set_property("Tuya Device", "Porch Plug (" + DEV + ")")
+    assert d.run(3, lambda: c.status() == "Online (cloud)"), c.properties
+    bridge.broadcast(fake.broadcast_packet("127.0.0.1"), "127.0.0.1")
+    assert d.run(5, lambda: c.status() == "Online"), c.properties
+    n = len(cloud.commands)
+    c.proxy("ON")
+    assert d.run(2, lambda: fake.dps["1"] is True)
+    assert len(cloud.commands) == n, "went to the cloud while the LAN was up"
+    fake.close()
+
+
+@test
+def bad_cloud_secret_is_reported():
+    cloud = FakeCloud(CLOUD_ID, CLOUD_SECRET)
+    d, bridge = bridge_setup(cloud, **{"Cloud Access ID": CLOUD_ID, "Cloud Access Secret": "wrong" * 6 + "xx"})
+    assert d.run(2, lambda: "Sign-in failed" in (bridge.properties.get("Cloud Status") or "")), bridge.properties
+
+
+@test
+def bridge_restores_devices_after_a_restart_without_the_cloud():
+    cloud = FakeCloud(CLOUD_ID, CLOUD_SECRET)
+    cloud.add(DEV, "Porch Plug", KEY, "plug")
+    d, bridge = cloud_bridge(cloud)
+    d.run(7, lambda: bridge.persist.get("tuya_bridge_devices"))
+    saved = bridge.persist["tuya_bridge_devices"]
+    assert saved and saved[0]["key"] == KEY, saved
+    d2 = Director()
+    b2 = Harness(BRIDGE, {"Discovery": "On"}, director=d2, filename="tuya_bridge.c4z")
+    b2.persist = {"tuya_bridge_devices": saved}
+    b2.init()
+    assert "1 known" in b2.properties.get("Devices", ""), b2.properties
+    assert "Porch Plug" in b2.g("DeviceListItems")().decode()
 
 
 def main():

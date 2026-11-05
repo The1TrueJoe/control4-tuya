@@ -14,7 +14,11 @@ function OnDriverLateInit(driverInitType)
 	end
 	LATE_INIT_DONE = true
 	if (OnVariantInit) then OnVariantInit() end
+	FindBridge()
 	StartSession()
+	BridgeHello()
+	EvaluatePath()
+	StartResourceReport()
 end
 
 function OnDriverDestroyed(driverInitType)
@@ -24,7 +28,7 @@ function OnDriverDestroyed(driverInitType)
 	StopSession()
 end
 
-function ExecuteCommand(strCommand, tParams)
+local function HandleCommand(strCommand, tParams)
 	if (DRIVER_DESTROYING) then
 		return
 	end
@@ -33,7 +37,9 @@ function ExecuteCommand(strCommand, tParams)
 	if (command == 'LUA_ACTION') then
 		command = Normalize(tParams.ACTION or tParams.action or '')
 	end
-	if (command == 'REFRESH_NOW') then
+	if (HandleBridgeCommand(command, tParams)) then
+		return
+	elseif (command == 'REFRESH_NOW') then
 		RefreshNow()
 	elseif (command == 'RECONNECT') then
 		RestartSession()
@@ -41,3 +47,5 @@ function ExecuteCommand(strCommand, tParams)
 		DebugLog('Unhandled ExecuteCommand: ' .. tostring(strCommand))
 	end
 end
+
+ExecuteCommand = Tracked(HandleCommand, 'command')

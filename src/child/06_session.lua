@@ -57,6 +57,7 @@ local function Lost(conn, why)
 		if (OnDeviceOnline) then OnDeviceOnline(false) end
 	end
 	ScheduleReconnect()
+	if (OnLocalState) then OnLocalState(false) end
 end
 
 local function SendQuery(conn)
@@ -77,6 +78,7 @@ local function Ready(conn)
 	UpdateDriverProperty('Last Error', '')
 	Notify('ONLINE_CHANGED', { STATE = true })
 	if (OnDeviceOnline) then OnDeviceOnline(true) end
+	if (OnLocalState) then OnLocalState(true) end
 
 	conn.heartbeatTimer = SetTimer(HEARTBEAT_MS, function()
 		if (CONN ~= conn) then return end
@@ -183,6 +185,14 @@ end
 
 function StartSession()
 	StopSession()
+	if (DEVICE.localUnsupported) then
+		SetConnectionStatus('Cloud only', 'protocol 3.5 is not supported on the LAN; control goes through the Tuya Bridge')
+		return
+	end
+	if (DEVICE.ip == '' and DEVICE.id ~= '' and BRIDGE and BRIDGE.id) then
+		SetConnectionStatus('Waiting for the bridge', 'the Tuya Bridge has not seen this device on the LAN yet')
+		return
+	end
 	if (DEVICE.ip == '' or DEVICE.id == '') then
 		SetConnectionStatus('Not Configured', 'set Device IP and Device ID')
 		return
@@ -201,7 +211,10 @@ function StartSession()
 	-- drop the connection and say what broke instead of sitting "Online" doing nothing.
 	local function Guarded(fn)
 		return function(...)
+			local t0 = os.clock()
 			local ok, err = pcall(fn, ...)
+			STATS.cpu = STATS.cpu + (os.clock() - t0)
+			STATS.events = STATS.events + 1
 			if (not ok) then
 				Lost(conn, 'driver error: ' .. tostring(err))
 			end
@@ -271,6 +284,9 @@ end
 -- a command given during a blip still lands.
 function SendDps(dps)
 	if (not SessionReady()) then
+		if (CloudSend and CloudSend(dps)) then
+			return
+		end
 		pendingDps = pendingDps or {}
 		for k, v in pairs(dps) do pendingDps[k] = v end
 		pendingAt = os.time()
