@@ -5,8 +5,8 @@
 	<model>Tuya Plug (Local)</model>
 	<creator>Joseph Telaak</creator>
 	<created>11/04/2026 00:00</created>
-	<modified>11/05/2026 17:47</modified>
-	<version>5</version>
+	<modified>11/05/2026 17:57</modified>
+	<version>8</version>
 	<control>lua_gen</control>
 	<controlmethod>ip</controlmethod>
 	<driver>DriverWorks</driver>
@@ -126,6 +126,32 @@
 				<readonly>true</readonly>
 			</property>
 			<property>
+				<name>Bridge</name>
+				<default>None (manual setup)</default>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Tuya Device</name>
+				<type>LIST</type>
+				<items>
+					<item>(none)</item>
+				</items>
+				<default>(none)</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Control Path</name>
+				<type>LIST</type>
+				<items>
+					<item>Auto</item>
+					<item>Local</item>
+					<item>Cloud</item>
+				</items>
+				<default>Auto</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
 				<name>Device IP</name>
 				<type>STRING</type>
 				<default/>
@@ -149,6 +175,7 @@
 				<items>
 					<item>3.3</item>
 					<item>3.4</item>
+					<item>3.5</item>
 				</items>
 				<default>3.3</default>
 				<readonly>false</readonly>
@@ -211,6 +238,12 @@
 			</property>
 			<property>
 				<name>Last Update</name>
+				<default/>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Resource Use</name>
 				<default/>
 				<type>STRING</type>
 				<readonly>true</readonly>

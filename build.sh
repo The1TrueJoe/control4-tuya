@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds tuya_light.c4z and tuya_plug.c4z into dist/.
+# Builds tuya_light.c4z, tuya_plug.c4z and tuya_bridge.c4z into dist/.
 #
 # Each driver is the .lua files of its source folders (see sources()), concatenated in filename order
 # into drivers/<variant>/driver.lua, syntax-checked as Lua 5.1, stamped, and zipped with
@@ -44,11 +44,15 @@ for variant in light plug bridge; do
   } > "$out"
   check_lua "$out"
 
-  sed -i '' "s|<modified>.*</modified>|<modified>${BUILD_DATE}</modified>|" "$dir/driver.xml"
-  sed -i '' "s|<version>[^<]*</version>|<version>${VERSION}</version>|" "$dir/driver.xml"
+  # Stamp a staging copy, so building never leaves driver.xml modified in git.
+  stage=$(mktemp -d)
+  cp -R "$dir/driver.xml" "$out" "$dir/www" "$stage/"
+  sed -i '' "s|<modified>.*</modified>|<modified>${BUILD_DATE}</modified>|" "$stage/driver.xml"
+  sed -i '' "s|<version>[^<]*</version>|<version>${VERSION}</version>|" "$stage/driver.xml"
 
   c4z="dist/tuya_${variant}.c4z"
   rm -f "$c4z"
-  (cd "$dir" && zip -qr "../../$c4z" driver.xml driver.lua www)
+  (cd "$stage" && zip -qr "$OLDPWD/$c4z" driver.xml driver.lua www)
+  rm -rf "$stage"
   echo "built $c4z (version $VERSION, $(wc -l < "$out" | tr -d ' ') lines of Lua)"
 done
