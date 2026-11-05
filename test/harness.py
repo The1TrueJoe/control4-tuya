@@ -145,8 +145,11 @@ class Harness:
         h = self
         lua = self.lua
 
-        def aes(cipher, key, data, encrypt):
+        def aes(cipher, key, iv, data, encrypt):
             assert b(cipher) == b"AES-128-ECB", cipher
+            # Director refuses any IV for ECB: "The specified iv was too long".
+            if iv is not None and len(b(iv)) > 0:
+                return None, b"The specified iv was too long"
             c = Cipher(algorithms.AES(b(key)), modes.ECB())
             op = c.encryptor() if encrypt else c.decryptor()
             data = b(data)
@@ -177,8 +180,8 @@ class Harness:
             h.variables[b(name).decode()] = b(value).decode()
 
         return lua.table_from({
-            b"Encrypt": lambda _, c, k, iv, d, o=None: aes(c, k, d, True),
-            b"Decrypt": lambda _, c, k, iv, d, o=None: aes(c, k, d, False),
+            b"Encrypt": lambda _, c, k, iv, d, o=None: aes(c, k, iv, d, True),
+            b"Decrypt": lambda _, c, k, iv, d, o=None: aes(c, k, iv, d, False),
             b"HMAC": lambda _, alg, k, d, o=None: hmac.new(b(k), b(d), hashlib.sha256).digest(),
             b"JsonDecode": json_decode,
             b"SetTimer": set_timer,

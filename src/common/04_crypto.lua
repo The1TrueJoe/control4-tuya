@@ -4,10 +4,11 @@
 -- bytes on the wire do not depend on how a given OS release interprets `padding`.
 
 local RAW = { return_encoding = 'NONE', key_encoding = 'NONE', iv_encoding = 'NONE', data_encoding = 'NONE', padding = false }
-local ZERO_IV = string.rep('\0', 16)
+-- ECB has no IV, and Director refuses one ("The specified iv was too long").
+local NO_IV = ''
 
 function AesEncrypt(key, data)
-	local out, err = C4:Encrypt('AES-128-ECB', key, ZERO_IV, data, RAW)
+	local out, err = C4:Encrypt('AES-128-ECB', key, NO_IV, data, RAW)
 	if (not out) then
 		error('AES encrypt failed: ' .. tostring(err))
 	end
@@ -15,7 +16,7 @@ function AesEncrypt(key, data)
 end
 
 function AesDecrypt(key, data)
-	local out, err = C4:Decrypt('AES-128-ECB', key, ZERO_IV, data, RAW)
+	local out, err = C4:Decrypt('AES-128-ECB', key, NO_IV, data, RAW)
 	if (not out) then
 		return nil, 'AES decrypt failed: ' .. tostring(err)
 	end
