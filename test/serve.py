@@ -56,7 +56,9 @@ def main():
                 print(f"           state {json.dumps(fake.dps, sort_keys=True)}", flush=True)
         if a.broadcast and time.time() - last_bc >= 5:
             last_bc = time.time()
-            bc.sendto(fake.broadcast_packet(a.broadcast), ("255.255.255.255", 6667))
+            # The subnet's broadcast address: a Mac on several networks may not send 255.255.255.255
+            # out of the interface this IP is on.
+            bc.sendto(fake.broadcast_packet(a.broadcast), (a.broadcast.rsplit(".", 1)[0] + ".255", 6667))
         if a.press and time.time() - last_press >= a.press:
             last_press = time.time()
             fake.push_status({switch: not fake.dps[switch]})
