@@ -12,20 +12,31 @@ elseif (type(bit) == 'table' and bit.bxor) then
 	-- LuaBitOp returns signed 32-bit results.
 	BXOR = function(a, b) return bit.bxor(a, b) % TWO32 end
 else
+	-- No bit library: XOR four bits at a time through a 16x16 table, 8 steps for 32 bits
+	-- instead of 32. This runs for every CRC'd byte on 3.3 devices, so it matters.
+	local NIBBLE = {}
+	for x = 0, 15 do
+		for y = 0, 15 do
+			local r, p, a, b = 0, 1, x, y
+			for _ = 1, 4 do
+				if (a % 2 ~= b % 2) then r = r + p end
+				a, b, p = math.floor(a / 2), math.floor(b / 2), p * 2
+			end
+			NIBBLE[x * 16 + y] = r
+		end
+	end
 	BXOR = function(a, b)
 		local result, place = 0, 1
 		while (a > 0 or b > 0) do
-			local x, y = a % 2, b % 2
-			if (x ~= y) then
-				result = result + place
-			end
-			a = (a - x) / 2
-			b = (b - y) / 2
-			place = place * 2
+			local x, y = a % 16, b % 16
+			result = result + NIBBLE[x * 16 + y] * place
+			a, b, place = (a - x) / 16, (b - y) / 16, place * 16
 		end
 		return result
 	end
 end
+-- Which XOR Director gave us, for the Resource Use property.
+BIT_LIBRARY = (type(bit32) == 'table' and 'bit32') or (type(bit) == 'table' and 'bit') or 'none (table XOR)'
 Bxor = BXOR
 
 function U32(n)

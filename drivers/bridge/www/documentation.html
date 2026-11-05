@@ -1,0 +1,25 @@
+<html>
+<body>
+<h2>Tuya Bridge</h2>
+<p>Finds your Tuya / Smart Life devices and hands each Tuya Light or Tuya Plug driver its
+address and key, so you pick a device from a list instead of typing them in. One bridge per
+controller.</p>
+<h3>How it finds devices</h3>
+<ul>
+<li><b>On the LAN</b>: devices on the controller's network announce themselves every few
+seconds. The bridge listens (UDP 6666, 6667, 7000) and keeps their addresses current, so a
+DHCP change follows automatically.</li>
+<li><b>Through your Tuya account</b> (optional): with a Tuya IoT project's Access ID and Secret,
+the bridge fetches every linked account's device names and local keys. Devices on another
+network, or on protocol 3.5, can then be controlled through the cloud.</li>
+</ul>
+<h3>Notes</h3>
+<ul>
+<li>Local control never goes through the cloud. The cloud is used for keys and names, and for
+control only when a device cannot be reached locally.</li>
+<li>Tuya's free IoT plan limits API calls per month: cloud-controlled devices are polled in one
+batched request per <b>Cloud Poll Interval</b>.</li>
+<li><b>Resource Use</b> shows the bridge's own memory and CPU, refreshed every 5 minutes.</li>
+</ul>
+</body>
+</html>

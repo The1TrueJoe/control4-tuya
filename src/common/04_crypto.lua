@@ -32,3 +32,13 @@ function HmacSha256(key, data)
 	end
 	return out
 end
+
+local HASH_OPTS = { return_encoding = 'NONE', data_encoding = 'NONE' }
+
+function Sha256Hex(data)
+	local out = C4:Hash('SHA256', data or '', HASH_OPTS)
+	if (not out or #out ~= 32) then
+		error('SHA-256 unavailable on this controller')
+	end
+	return ToHex(out)
+end

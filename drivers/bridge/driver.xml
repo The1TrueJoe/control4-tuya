@@ -1,0 +1,141 @@
+<devicedata>
+	<copyright>Copyright 2026. All rights reserved.</copyright>
+	<manufacturer>Tuya</manufacturer>
+	<name>Tuya Bridge</name>
+	<model>Tuya Bridge (LAN + Cloud)</model>
+	<creator>Joseph Telaak</creator>
+	<created>11/05/2026 00:00</created>
+	<modified>11/05/2026 17:47</modified>
+	<version>5</version>
+	<control>lua_gen</control>
+	<controlmethod>ip</controlmethod>
+	<driver>DriverWorks</driver>
+	<minimum_os_version>3.0.0</minimum_os_version>
+	<composer_categories>
+		<category>Lighting</category>
+	</composer_categories>
+	<config>
+		<script file="driver.lua"/>
+		<documentation file="www/documentation.html"/>
+		<properties>
+			<property>
+				<name>Driver Version</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Devices</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Discovery</name>
+				<type>LIST</type>
+				<items>
+					<item>On</item>
+					<item>Off</item>
+				</items>
+				<default>On</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Discovery Status</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Cloud Region</name>
+				<type>LIST</type>
+				<items>
+					<item>US</item>
+					<item>US East</item>
+					<item>EU</item>
+					<item>EU West</item>
+					<item>China</item>
+					<item>India</item>
+				</items>
+				<default>US</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Cloud Access ID</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Cloud Access Secret</name>
+				<type>PASSWORD</type>
+				<default/>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Cloud Status</name>
+				<type>STRING</type>
+				<default>Not configured</default>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Key Refresh (hours)</name>
+				<type>RANGED_INTEGER</type>
+				<minimum>1</minimum>
+				<maximum>168</maximum>
+				<default>12</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Cloud Poll Interval (seconds)</name>
+				<type>RANGED_INTEGER</type>
+				<minimum>60</minimum>
+				<maximum>3600</maximum>
+				<default>120</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Resource Use</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Debug Mode</name>
+				<type>LIST</type>
+				<items>
+					<item>Off</item>
+					<item>On</item>
+				</items>
+				<default>Off</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Last Error</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>true</readonly>
+			</property>
+		</properties>
+		<commands>
+			<command>
+				<name>Refresh Now</name>
+				<description>Refresh NAME's device list and keys from the Tuya cloud</description>
+			</command>
+			<command>
+				<name>Forget Devices</name>
+				<description>Clear the devices NAME has found</description>
+			</command>
+		</commands>
+		<actions>
+			<action>
+				<name>Refresh Now</name>
+				<command>REFRESH_NOW</command>
+			</action>
+			<action>
+				<name>Forget Devices</name>
+				<command>FORGET_DEVICES</command>
+			</action>
+		</actions>
+	</config>
+</devicedata>

@@ -49,14 +49,45 @@ function Notify(command, params)
 	end
 end
 
-function SetTimer(ms, fn, rep)
-	return C4:SetTimer(ms, function(timer)
-		local ok, err = pcall(fn, timer)
+-- CPU time and event count spent in this driver's handlers, for the Resource Use property.
+-- os.clock is process CPU time; Director runs one handler at a time, so the time inside a
+-- handler is this driver's.
+STATS = { cpu = 0, events = 0 }
+
+-- Wraps a callback: counts it, times it, and turns an error into Last Error instead of a
+-- silent failure in Director's Lua output.
+function Tracked(fn, label)
+	return function(...)
+		local t0 = os.clock()
+		local ok, a, b, c = pcall(fn, ...)
+		STATS.cpu = STATS.cpu + (os.clock() - t0)
+		STATS.events = STATS.events + 1
 		if (not ok) then
-			print(LOG_PREFIX .. 'timer error: ' .. tostring(err))
-			UpdateDriverProperty('Last Error', 'driver error: ' .. tostring(err))
+			print(LOG_PREFIX .. (label or 'handler') .. ' error: ' .. tostring(a))
+			UpdateDriverProperty('Last Error', 'driver error: ' .. tostring(a))
+			return nil
 		end
-	end, rep or false)
+		return a, b, c
+	end
+end
+
+local resourceTimer = nil
+local RESOURCE_MS = 300000
+
+-- Every 5 minutes: Lua memory (this driver's own Lua state) and CPU spent in the last 5.
+function StartResourceReport()
+	resourceTimer = CancelTimer(resourceTimer)
+	local function report()
+		UpdateDriverProperty('Resource Use', string.format('%d KB Lua memory, %.0f ms CPU / 5 min, %d events, XOR: %s',
+			math.floor(collectgarbage('count')), STATS.cpu * 1000, STATS.events, BIT_LIBRARY))
+		STATS.cpu, STATS.events = 0, 0
+	end
+	report()
+	resourceTimer = SetTimer(RESOURCE_MS, report, true)
+end
+
+function SetTimer(ms, fn, rep)
+	return C4:SetTimer(ms, Tracked(fn, 'timer'), rep or false)
 end
 
 function CancelTimer(timer)

@@ -93,6 +93,16 @@ class FakeTuya:
                 except OSError:
                     pass
 
+    BROADCAST_KEY = hashlib.md5(b"yGAdlopoPVldABfn").digest()
+
+    def broadcast_packet(self, ip, product_key="keyfakeplug00001"):
+        """The UDP packet a 3.3/3.4 device sends to port 6667 every few seconds."""
+        info = {"ip": ip, "gwId": self.id, "active": 2, "ability": 0, "mode": 0, "encrypt": True,
+                "productKey": product_key, "version": "%.1f" % self.version}
+        payload = struct.pack(">I", 0) + aes(self.BROADCAST_KEY, pad(json.dumps(info, separators=(",", ":")).encode()))
+        body = struct.pack(">4I", PREFIX, 0, 0x13, len(payload) + 8) + payload
+        return body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF) + struct.pack(">I", SUFFIX)
+
     def push_status(self, changed):
         """What a device sends when its state changes (from a command or a button press)."""
         self.dps.update(changed)

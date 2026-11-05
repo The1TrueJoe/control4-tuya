@@ -35,12 +35,17 @@ def main():
     ap.add_argument("--version", type=float, default=3.3)
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--press", type=float, default=0, help="toggle the switch every N seconds (0 = never)")
+    ap.add_argument("--broadcast", metavar="IP", help="announce on UDP 6667 every 5 s as this IP, like a real device")
     a = ap.parse_args()
 
     fake = FakeTuya(DEV_ID, KEY, a.version, DEVICES[a.kind], port=6668, host=a.host)
     switch = "20" if a.kind == "light" else "1"
     print(f"fake {a.kind} (protocol {a.version}) on {a.host}:6668  id={DEV_ID}  key={KEY}", flush=True)
-    seen, last_press = 0, time.time()
+    seen, last_press, last_bc = 0, time.time(), 0
+    if a.broadcast:
+        import socket
+        bc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        bc.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     while True:
         time.sleep(0.2)
         while seen < len(fake.log):
@@ -49,6 +54,9 @@ def main():
             if cmd != 0x09:  # heartbeats are noise
                 print(f"{time.strftime('%H:%M:%S')} <- {NAMES.get(cmd, cmd)} {json.dumps(msg)}", flush=True)
                 print(f"           state {json.dumps(fake.dps, sort_keys=True)}", flush=True)
+        if a.broadcast and time.time() - last_bc >= 5:
+            last_bc = time.time()
+            bc.sendto(fake.broadcast_packet(a.broadcast), ("255.255.255.255", 6667))
         if a.press and time.time() - last_press >= a.press:
             last_press = time.time()
             fake.push_status({switch: not fake.dps[switch]})

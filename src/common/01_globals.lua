@@ -55,3 +55,8 @@ DEVICE = {
 }
 CONN = nil -- see 06_session.lua
 DPS = {} -- last known datapoint values, keyed by DP number as a string
+
+-- Bridge and children find each other by driver file name (C4:GetDevicesByC4iName) and talk
+-- with C4:SendToDevice, so there is nothing to bind in Composer.
+BRIDGE_FILENAME = 'tuya_bridge.c4z'
+CHILD_FILENAMES = { 'tuya_light.c4z', 'tuya_plug.c4z' }
