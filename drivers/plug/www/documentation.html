@@ -1,0 +1,33 @@
+<html>
+<body>
+<h2>Tuya Plug (Local)</h2>
+<p>Controls a Tuya / Smart Life plug, outlet or wall switch over your LAN, with no cloud in
+the path. It appears in Control4 as an on/off light, so it works with keypads, scenes and
+programming.</p>
+
+<h3>Setup</h3>
+<ol>
+<li>Give the plug a fixed IP (a DHCP reservation on your router).</li>
+<li>Get the device's <b>Device ID</b> and <b>Local Key</b>. The easiest way is
+<code>python -m tinytuya wizard</code> on a computer, with a free Tuya IoT developer project
+linked to your Smart Life app account. The wizard writes both to <code>devices.json</code>.</li>
+<li>Enter <b>Device IP</b>, <b>Device ID</b> and <b>Local Key</b>, and set <b>Protocol Version</b>
+(3.3 or 3.4).</li>
+</ol>
+
+<h3>Properties</h3>
+<ul>
+<li><b>Switch DP</b>: 1 for single plugs. Use 2, 3, … for the other gangs of a multi-gang switch.</li>
+<li><b>Power Metering</b>: Auto detects metering plugs. Readings show in <b>Power (W)</b>,
+<b>Voltage (V)</b> and <b>Current (mA)</b>, and as the variables POWER_W, VOLTAGE_V and
+CURRENT_MA for programming. They refresh on every poll.</li>
+</ul>
+
+<h3>Notes</h3>
+<ul>
+<li>Re-pairing a device in the Smart Life app changes its Local Key.</li>
+<li>Many Tuya devices allow only one LAN connection, so one driver per device.</li>
+<li>Protocols 3.1 and 3.5 are not supported.</li>
+</ul>
+</body>
+</html>

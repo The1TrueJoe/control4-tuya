@@ -1,0 +1,36 @@
+<html>
+<body>
+<h2>Tuya Light (Local)</h2>
+<p>Controls a Tuya / Smart Life bulb, strip or dimmer over your LAN, with no cloud in the path.
+It appears in Control4 as a normal light: on/off, brightness, colour and white temperature.</p>
+
+<h3>Setup</h3>
+<ol>
+<li>Give the bulb a fixed IP (a DHCP reservation on your router).</li>
+<li>Get the device's <b>Device ID</b> and <b>Local Key</b>. The easiest way is
+<code>python -m tinytuya wizard</code> on a computer, with a free Tuya IoT developer project
+linked to your Smart Life app account. The wizard writes both to <code>devices.json</code>.</li>
+<li>Enter <b>Device IP</b>, <b>Device ID</b> and <b>Local Key</b>. Set <b>Protocol Version</b> to
+what the wizard (or <code>python -m tinytuya scan</code>) reports: 3.3 or 3.4.</li>
+<li><b>Connection Status</b> should go to <i>Online</i> within a few seconds.</li>
+</ol>
+
+<h3>Properties</h3>
+<ul>
+<li><b>Light Type</b>: Auto works it out from what the bulb reports. Override it if a bulb
+reports datapoints it doesn't really use.</li>
+<li><b>DP Profile</b>: Auto, Standard (DPs 20-24, most current bulbs) or Legacy (DPs 1-5).
+<b>Detected Profile</b> shows what Auto chose.</li>
+<li><b>Color Temperature Min/Max (K)</b>: the bulb's white range. Most Tuya bulbs are 2700-6500 K.</li>
+</ul>
+
+<h3>Notes</h3>
+<ul>
+<li>Re-pairing a device in the Smart Life app changes its Local Key.</li>
+<li>Many Tuya devices allow only one LAN connection. Close other local integrations
+(Home Assistant LocalTuya, tinytuya scripts) on the same device.</li>
+<li>Ramp rates are ignored: Tuya has no transition time on the LAN.</li>
+<li>Protocols 3.1 and 3.5 are not supported.</li>
+</ul>
+</body>
+</html>

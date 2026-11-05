@@ -1,0 +1,3 @@
+dist/
+drivers/*/driver.lua
+__pycache__/

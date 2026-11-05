@@ -1,0 +1,246 @@
+<devicedata>
+	<copyright>Copyright 2026. All rights reserved.</copyright>
+	<manufacturer>Tuya</manufacturer>
+	<name>Tuya Plug</name>
+	<model>Tuya Plug (Local)</model>
+	<creator>Joseph Telaak</creator>
+	<created>11/04/2026 00:00</created>
+	<modified>11/04/2026 23:10</modified>
+	<version>1</version>
+	<control>lua_gen</control>
+	<controlmethod>ip</controlmethod>
+	<driver>DriverWorks</driver>
+	<minimum_os_version>3.0.0</minimum_os_version>
+	<composer_categories>
+		<category>Lighting</category>
+	</composer_categories>
+	<proxies qty="1">
+		<proxy proxybindingid="5001" primary="True" name="Tuya Plug">light_v2</proxy>
+	</proxies>
+	<capabilities>
+		<dimmer>False</dimmer>
+		<set_level>False</set_level>
+		<supports_target>True</supports_target>
+		<on_off>True</on_off>
+		<ramp_level>False</ramp_level>
+		<has_fixed_ramp_rate>True</has_fixed_ramp_rate>
+		<fixed_ramp_rate>0</fixed_ramp_rate>
+		<hide_proxy_properties>False</hide_proxy_properties>
+		<hide_proxy_events>False</hide_proxy_events>
+		<click_rates>False</click_rates>
+		<hold_rates>False</hold_rates>
+		<cold_start>False</cold_start>
+		<has_leds>False</has_leds>
+		<has_button_events>True</has_button_events>
+		<supports_broadcast_scenes>False</supports_broadcast_scenes>
+		<supports_multichannel_scenes>False</supports_multichannel_scenes>
+		<advanced_scene_support>True</advanced_scene_support>
+		<load_group_support>False</load_group_support>
+		<has_extras>False</has_extras>
+		<supports_color>False</supports_color>
+		<supports_color_correlated_temperature>False</supports_color_correlated_temperature>
+		<color_correlated_temperature_min>2700</color_correlated_temperature_min>
+		<color_correlated_temperature_max>6500</color_correlated_temperature_max>
+		<color_rate_min>0</color_rate_min>
+		<color_rate_max>0</color_rate_max>
+		<color_rate_default>0</color_rate_default>
+		<brightness_rate_min>0</brightness_rate_min>
+		<brightness_rate_max>0</brightness_rate_max>
+	</capabilities>
+	<connections>
+		<connection>
+			<id>5001</id>
+			<facing>6</facing>
+			<connectionname>Light</connectionname>
+			<type>2</type>
+			<consumer>False</consumer>
+			<audiosource>False</audiosource>
+			<videosource>False</videosource>
+			<linelevel>False</linelevel>
+			<classes>
+				<class>
+					<classname>LIGHT_V2</classname>
+				</class>
+			</classes>
+		</connection>
+		<connection>
+			<id>300</id>
+			<facing>6</facing>
+			<connectionname>On Button Link</connectionname>
+			<type>1</type>
+			<consumer>False</consumer>
+			<audiosource>False</audiosource>
+			<videosource>False</videosource>
+			<linelevel>True</linelevel>
+			<classes>
+				<class>
+					<classname>BUTTON_LINK</classname>
+				</class>
+			</classes>
+		</connection>
+		<connection>
+			<id>301</id>
+			<facing>6</facing>
+			<connectionname>Toggle Button Link</connectionname>
+			<type>1</type>
+			<consumer>False</consumer>
+			<audiosource>False</audiosource>
+			<videosource>False</videosource>
+			<linelevel>True</linelevel>
+			<classes>
+				<class>
+					<classname>BUTTON_LINK</classname>
+				</class>
+			</classes>
+		</connection>
+		<connection>
+			<id>302</id>
+			<facing>6</facing>
+			<connectionname>Off Button Link</connectionname>
+			<type>1</type>
+			<consumer>False</consumer>
+			<audiosource>False</audiosource>
+			<videosource>False</videosource>
+			<linelevel>True</linelevel>
+			<classes>
+				<class>
+					<classname>BUTTON_LINK</classname>
+				</class>
+			</classes>
+		</connection>
+	</connections>
+	<config>
+		<script file="driver.lua"/>
+		<documentation file="www/documentation.html"/>
+		<properties>
+			<property>
+				<name>Driver Version</name>
+				<default/>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Connection Status</name>
+				<default>Not Configured</default>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Device IP</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Device ID</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Local Key</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Protocol Version</name>
+				<type>LIST</type>
+				<items>
+					<item>3.3</item>
+					<item>3.4</item>
+				</items>
+				<default>3.3</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Switch DP</name>
+				<type>RANGED_INTEGER</type>
+				<minimum>1</minimum>
+				<maximum>255</maximum>
+				<default>1</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Power Metering</name>
+				<type>LIST</type>
+				<items>
+					<item>Auto</item>
+					<item>18-20</item>
+					<item>4-6</item>
+					<item>None</item>
+				</items>
+				<default>Auto</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Power (W)</name>
+				<default/>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Voltage (V)</name>
+				<default/>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Current (mA)</name>
+				<default/>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Poll Interval (seconds)</name>
+				<type>RANGED_INTEGER</type>
+				<minimum>10</minimum>
+				<maximum>3600</maximum>
+				<default>60</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Debug Mode</name>
+				<type>LIST</type>
+				<items>
+					<item>Off</item>
+					<item>On</item>
+				</items>
+				<default>Off</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Last Update</name>
+				<default/>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
+				<name>Last Error</name>
+				<default/>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+		</properties>
+		<commands>
+			<command>
+				<name>Refresh Now</name>
+				<description>Ask NAME for its current state</description>
+			</command>
+			<command>
+				<name>Reconnect</name>
+				<description>Drop and reopen the connection to NAME</description>
+			</command>
+		</commands>
+		<actions>
+			<action>
+				<name>Refresh Now</name>
+				<command>REFRESH_NOW</command>
+			</action>
+			<action>
+				<name>Reconnect</name>
+				<command>RECONNECT</command>
+			</action>
+		</actions>
+	</config>
+</devicedata>
