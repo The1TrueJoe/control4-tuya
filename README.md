@@ -1,7 +1,8 @@
 # control4-tuya
 
 Control4 drivers for Tuya / Smart Life devices, controlled **locally** over the Tuya LAN
-protocol. No cloud is in the control path.
+protocol. The cloud is optional: through the bridge, it supplies names and keys, and controls
+only devices the LAN can't reach.
 
 | Driver | Proxy | Devices |
 |---|---|---|
@@ -79,8 +80,9 @@ test/         fake Tuya device and cloud, a Lua 5.1 multi-driver "Director" with
               API mocked, tests; serve.py runs a fake device on the LAN for a real controller
 ```
 
-`build.sh` concatenates `src/common` and `src/<variant>` in filename order into
-`drivers/<variant>/driver.lua` and zips each driver into `dist/`.
+`build.sh` concatenates each driver's source folders in filename order into
+`drivers/<variant>/driver.lua`, and zips it with a version-stamped copy of `driver.xml` into
+`dist/`.
 
 ## Testing
 
