@@ -34,7 +34,8 @@ local function Decode(data)
 	return JsonDecode(payload)
 end
 
-function OnServerDataIn(nHandle, strData, strClientAddress, strPort)
+-- Called by the bridge's OnServerDataIn for anything that isn't the login page.
+function DiscoveryDataIn(nHandle, strData, strClientAddress, strPort)
 	local ip = tostring(strClientAddress)
 	local now = os.time()
 	local prev = DISCOVERY.last[ip]
@@ -63,10 +64,6 @@ function OnServerDataIn(nHandle, strData, strClientAddress, strPort)
 		productKey = info.productKey,
 		seen = now,
 	})
-end
-
-function OnServerStatusChanged(nPort, strStatus)
-	DebugLog('UDP ' .. tostring(nPort) .. ': ' .. tostring(strStatus))
 end
 
 function StartDiscovery()
@@ -98,7 +95,13 @@ end
 function StopDiscovery()
 	DISCOVERY.sweep = CancelTimer(DISCOVERY.sweep)
 	if (next(DISCOVERY.servers)) then
+		-- Director has no per-server destroy: this also stops the login page, if it was up.
+		local page = LOGINPAGE and LOGINPAGE.listening
 		pcall(function() C4:DestroyServer() end)
+		DISCOVERY.servers = {}
+		if (page) then
+			LOGINPAGE.listening, LOGINPAGE.handles = false, {}
+			if (LOGINPAGE.qr) then ShowLoginQr(LOGINPAGE.qr) end
+		end
 	end
-	DISCOVERY.servers = {}
 end

@@ -52,6 +52,15 @@ for variant in light plug bridge; do
       echo "-- ${f}"
       sed "s/^DRIVER_VERSION = .*/DRIVER_VERSION = '${VERSION}'/" "$f"
     done
+    if [ "$variant" = bridge ]; then
+      # The login page's QR code library, comments and indentation stripped, license kept.
+      echo
+      echo "-- vendor/qrcode-generator/qrcode.js (MIT, Kazuhiko Arase)"
+      echo "QR_JS = [==["
+      echo "// QR Code Generator for JavaScript, Copyright (c) 2009 Kazuhiko Arase, MIT license"
+      sed -e 's/^[[:space:]]*//' -e '/^\/\//d' -e '/^$/d' vendor/qrcode-generator/qrcode.js
+      echo "]==]"
+    fi
     for lib in $(libraries "$variant"); do
       echo
       echo "-- $(basename "$lib") (from $(basename "$(dirname "$lib")"))"

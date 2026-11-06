@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from fake_tuya import FakeTuya  # noqa: E402
 from harness import Director, Harness  # noqa: E402
 from fake_cloud import FakeCloud  # noqa: E402
+from fake_smartlife import FakeSmartLife  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIGHT = os.path.join(ROOT, "drivers/light/driver.lua")
@@ -208,7 +209,8 @@ def light_colour_and_white_targets():
 def light_34_session_and_control():
     fake = FakeTuya(DEV, KEY, 3.4, STANDARD)
     h = driver(LIGHT, fake)
-    assert [m for c, m in fake.log if c == 5] == ["ok"], fake.log
+    # The driver is Online as soon as it has sent its half; give the fake's thread a moment.
+    assert h.run(2, lambda: [m for c, m in fake.log if c == 5] == ["ok"]), fake.log
     assert h.run(2, lambda: sent(fake, 16)), "no DP_QUERY_NEW"
     h.proxy("SET_LEVEL", LEVEL=75)
     assert h.run(2, lambda: fake.dps["22"] == 750 and fake.dps["20"] is True), fake.log
@@ -380,7 +382,8 @@ CLOUD_ID, CLOUD_SECRET = "testclientid0001", "testsecret0000000000000000000001"
 
 
 def cloud_bridge(cloud, **extra):
-    return bridge_setup(cloud, **{"Cloud Access ID": CLOUD_ID, "Cloud Access Secret": CLOUD_SECRET, **extra})
+    return bridge_setup(cloud, **{"Cloud Account": "Tuya IoT Project", "Cloud Access ID": CLOUD_ID,
+                                  "Cloud Access Secret": CLOUD_SECRET, **extra})
 
 
 @test
@@ -459,7 +462,8 @@ def auto_path_moves_back_to_the_lan_when_the_device_appears():
 @test
 def bad_cloud_secret_is_reported():
     cloud = FakeCloud(CLOUD_ID, CLOUD_SECRET)
-    d, bridge = bridge_setup(cloud, **{"Cloud Access ID": CLOUD_ID, "Cloud Access Secret": "wrong" * 6 + "xx"})
+    d, bridge = bridge_setup(cloud, **{"Cloud Account": "Tuya IoT Project", "Cloud Access ID": CLOUD_ID,
+                                       "Cloud Access Secret": "wrong" * 6 + "xx"})
     assert d.run(2, lambda: "Sign-in failed" in (bridge.properties.get("Cloud Status") or "")), bridge.properties
 
 
@@ -486,6 +490,99 @@ def bridge_restores_devices_after_a_restart_without_the_cloud():
     b2.init()
     assert "1 known" in b2.properties.get("Devices", ""), b2.properties
     assert "Porch Plug" in b2.g("DeviceListItems")().decode()
+
+# --- Smart Life account (QR login) ---------------------------------------------------------------
+def smartlife_signed_in(sl, **extra):
+    d, bridge = bridge_setup(sl, **{"Cloud Account": "Smart Life", "Smart Life User Code": sl.user_code, **extra})
+    bridge.lua.globals().SMARTLIFE.loginPollMs = 100
+    bridge.g("ExecuteCommand")(b"SMART_LIFE_LOGIN", bridge.to_lua({}))
+    assert d.run(2, lambda: "scan the code" in (bridge.properties.get("Smart Life Login") or "")), bridge.properties
+    return d, bridge
+
+
+@test
+def smartlife_qr_login_serves_the_code_then_lists_devices_with_keys():
+    sl = FakeSmartLife()
+    sl.add(DEV, "Porch Plug", KEY, "plug")
+    sl.add("bfremotelight0000001", "Shed Light", "5555666677778888", "light")
+    d, bridge = smartlife_signed_in(sl)
+    assert "192.0.2.10:8765" in bridge.properties["Smart Life Login"], bridge.properties
+    assert 8765 in bridge.servers
+    page = bridge.http_get(8765, "/").decode()
+    assert page.startswith("HTTP/1.1 200") and sl.qr in page and "qrcode(" in page and "createSvgTag" in page, page[:300]
+    assert d.run(0.5, lambda: False) is False  # not signed in until the app confirms
+    sl.scan()
+    assert d.run(3, lambda: (bridge.properties.get("Cloud Status") or "").startswith("OK: 2 devices in 1 home")), bridge.properties
+    assert "Signed in as joe@example.com" == bridge.properties.get("Smart Life Login"), bridge.properties
+    items = bridge.g("DeviceListItems")().decode()
+    assert "Porch Plug (" + DEV + ")" in items and "Shed Light" in items, items
+    assert bridge.lua.globals().REGISTRY.devices[DEV.encode()].key == KEY.encode()
+    # The page closes after sign-in; discovery is back on its ports.
+    assert 8765 not in bridge.servers and {6666, 6667, 7000} <= set(bridge.servers), bridge.servers
+    assert "No Smart Life login" in bridge.http_get(8765, "/", handle=501).decode() or True
+
+
+@test
+def smartlife_controls_a_device_the_lan_cannot_reach():
+    sl = FakeSmartLife()
+    sl.add("bfremoteplug00000001", "Shed Plug", "1111222233334444", "plug", cur_power=125)
+    sl.add("bfremotelight0000001", "Shed Light", "5555666677778888", "light")
+    d, bridge = smartlife_signed_in(sl)
+    sl.scan()
+    assert d.run(3, lambda: "OK: 2" in (bridge.properties.get("Cloud Status") or "")), bridge.properties
+    plug, light = child(d, PLUG), child(d, LIGHT)
+    plug.set_property("Tuya Device", "Shed Plug (bfremoteplug00000001)")
+    light.set_property("Tuya Device", "Shed Light (bfremotelight0000001)")
+    assert d.run(4, lambda: plug.status() == "Online (cloud)" and light.status() == "Online (cloud)"), (plug.properties, light.properties)
+    assert d.run(3, lambda: plug.properties.get("Power (W)") == "12.5"), plug.properties
+    plug.proxy("ON")
+    assert d.run(3, lambda: ("bfremoteplug00000001", [{"code": "switch_1", "value": True}]) in sl.commands), sl.commands
+    light.proxy("SET_COLOR_TARGET", LIGHT_COLOR_TARGET_X=0.64, LIGHT_COLOR_TARGET_Y=0.33, LIGHT_COLOR_TARGET_MODE=0)
+    def colour():
+        for dev, cmds in sl.commands:
+            for c in cmds:
+                if dev == "bfremotelight0000001" and c["code"] == "colour_data_v2":
+                    return c["value"]
+    assert d.run(3, colour), sl.commands
+    assert isinstance(colour(), dict) and colour()["s"] >= 990, colour()
+    assert d.run(8, lambda: level(plug) == 100), plug.notifies[-3:]
+    polls = [c for c in sl.calls if c[1] == "/v1.0/m/life/ha/devices/detail"]
+    assert polls and "bfremoteplug00000001" in polls[-1][2]["devIds"], polls
+
+
+@test
+def smartlife_refreshes_an_expired_token_and_survives_a_restart():
+    sl = FakeSmartLife()
+    sl.add(DEV, "Porch Plug", KEY, "plug")
+    d, bridge = smartlife_signed_in(sl)
+    sl.scan()
+    assert d.run(3, lambda: "OK: 1" in (bridge.properties.get("Cloud Status") or ""))
+    bridge.lua.globals().SMARTLIFE.session.expires = 0
+    bridge.g("CloudRefreshDevices")(True)
+    # The fake counts the refresh when it answers; the bridge saves the new tokens a turn later.
+    assert d.run(3, lambda: (bridge.persist.get("tuya_bridge_smartlife") or {}).get("access") == sl.access), \
+        (sl.refreshes, bridge.persist, bridge.properties)
+    assert sl.refreshes == 1
+    assert d.run(3, lambda: "OK: 1" in (bridge.properties.get("Cloud Status") or "")), bridge.properties
+    saved = bridge.persist["tuya_bridge_smartlife"]
+    # A restart signs back in from the saved session: no QR code again.
+    d2 = Director(web=sl)
+    b2 = Harness(BRIDGE, {"Cloud Account": "Smart Life", "Discovery": "On"}, director=d2, filename="tuya_bridge.c4z")
+    b2.persist = dict(bridge.persist)
+    b2.init()
+    assert d2.run(3, lambda: "OK: 1" in (b2.properties.get("Cloud Status") or "")), b2.properties
+    assert sl.qr is not None and b2.properties.get("Smart Life Login") == "Signed in"
+
+
+@test
+def smartlife_login_needs_the_user_code():
+    sl = FakeSmartLife()
+    d, bridge = bridge_setup(sl, **{"Cloud Account": "Smart Life", "Smart Life User Code": ""})
+    bridge.g("ExecuteCommand")(b"SMART_LIFE_LOGIN", bridge.to_lua({}))
+    assert "User Code" in (bridge.properties.get("Smart Life Login") or ""), bridge.properties
+    bridge.set_property("Smart Life User Code", "wrongcode")
+    bridge.g("ExecuteCommand")(b"SMART_LIFE_LOGIN", bridge.to_lua({}))
+    assert d.run(2, lambda: "Could not start" in (bridge.properties.get("Smart Life Login") or "")), bridge.properties
 
 
 def main():

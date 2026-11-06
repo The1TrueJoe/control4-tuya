@@ -36,10 +36,16 @@ name) and talk to it with `C4:SendToDevice`, so nothing is bound in Composer.
   listens with `C4:CreateServer` and keeps each device's address and protocol version
   current. A repeated broadcast costs one string compare: a packet is only decrypted when its
   bytes change. Broadcasts don't cross routers.
-- **Your Tuya account.** With a Tuya IoT project's Access ID and Secret (every Smart Life
-  account linked to that project), the bridge fetches device names and local keys — no
-  tinytuya wizard. One paged request (`associated-users/devices`, 50 devices a call) serves
-  both key refreshes (every 12 h) and status polls of cloud-controlled devices.
+- **Your Tuya account** (optional), as **Cloud Account**:
+  - *Smart Life* (default): enter the app's **User Code** (Me > Settings > Account and
+    Security), run **Smart Life Login**, and scan the QR code the bridge shows at
+    `http://<controller>:8765/` with the Smart Life app. Done once; the bridge keeps and refreshes
+    its tokens. No developer account.
+  - *Tuya IoT Project*: a developer project's Access ID and Secret, covering every Smart Life
+    account linked to it. One paged request (`associated-users/devices`, 50 devices a call)
+    serves both key refreshes and status polls.
+  - Either way the bridge fetches device names and local keys (every 12 h), and controls
+    through the cloud only the devices the LAN can't reach.
 - **Children** pick a device from **Tuya Device** (a list the bridge fills in), or take a typed
   **Device ID**; the bridge then supplies IP, Local Key and version, and follows DHCP changes.
 - **Control Path**: *Local* (LAN only), *Cloud* (through the bridge), or *Auto* — the LAN when
@@ -55,8 +61,8 @@ batched request, plus one confirming read a few seconds after a cloud command.
 ## Setup
 
 1. Give the device a DHCP reservation.
-2. With a Tuya Bridge and a cloud account: pick the device from **Tuya Device** and stop
-   here. Otherwise, get its **Device ID** and **Local Key**: `pip install tinytuya`, then
+2. With a Tuya Bridge signed in to your Smart Life account: pick the device from
+   **Tuya Device** and stop here. Otherwise, get its **Device ID** and **Local Key**: `pip install tinytuya`, then
    `python -m tinytuya wizard`. The wizard needs a free Tuya IoT developer project linked to
    your Smart Life app account. `python -m tinytuya scan` shows each device's IP and protocol
    version.
@@ -76,15 +82,23 @@ src/light/    colour maths and the light variant
 src/plug/     the plug variant
 src/bridge/   registry, LAN discovery, Tuya cloud, bridge callbacks
 drivers/<v>/  driver.xml, docs; build.sh writes driver.lua here
-test/         fake Tuya device and cloud, a Lua 5.1 multi-driver "Director" with Control4's
-              API mocked, tests; serve.py runs a fake device on the LAN for a real controller
+test/         fake Tuya device, IoT cloud and Smart Life cloud, tests; serve.py runs a fake device
+              on the LAN for a real controller
+vendor/       qrcode-generator (MIT), embedded in the bridge for the login page
 ```
 
 `build.sh` concatenates each driver's source folders in filename order into
 `drivers/<variant>/driver.lua`, and zips it with a version-stamped copy of `driver.xml` into
 `dist/`.
 
-## Testing
+## Building and testing
+
+Two small libraries live in their own repos; clone them next to this one (or point
+`C4_AES_GCM` / `C4_TEST_HARNESS` at them):
+
+- [control4-aes-gcm](../control4-aes-gcm): AES-GCM on Director's AES-ECB (the bridge's Smart Life
+  login uses it).
+- [control4-test-harness](../control4-test-harness): a mock Director for running drivers in tests.
 
 ```sh
 pip install lupa cryptography tinytuya

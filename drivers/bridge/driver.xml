@@ -47,6 +47,29 @@
 				<readonly>true</readonly>
 			</property>
 			<property>
+				<name>Cloud Account</name>
+				<type>LIST</type>
+				<items>
+					<item>Smart Life</item>
+					<item>Tuya IoT Project</item>
+					<item>Off</item>
+				</items>
+				<default>Smart Life</default>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Smart Life User Code</name>
+				<type>STRING</type>
+				<default/>
+				<readonly>false</readonly>
+			</property>
+			<property>
+				<name>Smart Life Login</name>
+				<type>STRING</type>
+				<default>Not signed in</default>
+				<readonly>true</readonly>
+			</property>
+			<property>
 				<name>Cloud Region</name>
 				<type>LIST</type>
 				<items>
@@ -123,6 +146,14 @@
 				<description>Refresh NAME's device list and keys from the Tuya cloud</description>
 			</command>
 			<command>
+				<name>Smart Life Login</name>
+				<description>Sign NAME in to your Smart Life account with a QR code</description>
+			</command>
+			<command>
+				<name>Smart Life Logout</name>
+				<description>Sign NAME out of your Smart Life account</description>
+			</command>
+			<command>
 				<name>Forget Devices</name>
 				<description>Clear the devices NAME has found</description>
 			</command>
@@ -131,6 +162,14 @@
 			<action>
 				<name>Refresh Now</name>
 				<command>REFRESH_NOW</command>
+			</action>
+			<action>
+				<name>Smart Life Login</name>
+				<command>SMART_LIFE_LOGIN</command>
+			</action>
+			<action>
+				<name>Smart Life Logout</name>
+				<command>SMART_LIFE_LOGOUT</command>
 			</action>
 			<action>
 				<name>Forget Devices</name>

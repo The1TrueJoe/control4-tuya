@@ -5,6 +5,7 @@
 --   TUYA_CLOUD_SET  { CHILD, DEVICE_ID, DPS (JSON) }  control a device through the cloud
 --   TUYA_CLOUD_WATCH { CHILD, DEVICE_ID, ON = 1|0 }   poll its state through the cloud
 -- and the bridge answers on the child's ExecuteCommand: TUYA_LIST, TUYA_INFO, TUYA_STATUS.
+-- Its own actions: REFRESH_NOW, FORGET_DEVICES, SMART_LIFE_LOGIN, SMART_LIFE_LOGOUT.
 
 local function TellChildrenBridgeUp()
 	for _, filename in ipairs(CHILD_FILENAMES) do
@@ -24,7 +25,7 @@ function ApplyProperty(name)
 	elseif (name == 'Discovery') then
 		DISCOVERY.enabled = (value ~= 'Off')
 		return 'discovery'
-	elseif (name == 'Cloud Region' or name == 'Cloud Access ID' or name == 'Cloud Access Secret') then
+	elseif (name == 'Cloud Account' or name == 'Cloud Region' or name == 'Cloud Access ID' or name == 'Cloud Access Secret') then
 		return 'cloud'
 	elseif (name == 'Cloud Poll Interval (seconds)' or name == 'Key Refresh (hours)') then
 		return 'cloud'
@@ -47,7 +48,24 @@ function OnDriverInit()
 	DRIVER_DESTROYING = false
 	LATE_INIT_DONE = false
 	UpdateDriverProperty('Driver Version', DRIVER_VERSION)
-	OnServerDataIn = Tracked(OnServerDataIn, 'discovery')
+	math.randomseed(os.time())
+end
+
+-- Director's server callbacks are shared by discovery (UDP) and the login page (TCP).
+OnServerConnectionStatusChanged = Tracked(function(nHandle, nPort, strStatus)
+	LoginServerConnection(nHandle, nPort, strStatus)
+end, 'server')
+
+OnServerDataIn = Tracked(function(nHandle, strData, strClientAddress, strPort)
+	if (IsLoginConnection(nHandle)) then
+		LoginServerData(nHandle, strData)
+	else
+		DiscoveryDataIn(nHandle, strData, strClientAddress, strPort)
+	end
+end, 'server')
+
+function OnServerStatusChanged(nPort, strStatus)
+	DebugLog('server ' .. tostring(nPort) .. ': ' .. tostring(strStatus))
 end
 
 function OnDriverLateInit()
@@ -89,6 +107,14 @@ local function HandleCommand(strCommand, tParams)
 		TellChildrenBridgeUp()
 	elseif (command == 'FORGET_DEVICES') then
 		ForgetDevices()
+	elseif (command == 'SMART_LIFE_LOGIN') then
+		if (Properties['Cloud Account'] ~= 'Smart Life') then
+			UpdateDriverProperty('Smart Life Login', 'Set Cloud Account to Smart Life first')
+		else
+			SmartLifeStartLogin()
+		end
+	elseif (command == 'SMART_LIFE_LOGOUT') then
+		SmartLifeLogout()
 	else
 		DebugLog('Unhandled ExecuteCommand: ' .. tostring(strCommand))
 	end

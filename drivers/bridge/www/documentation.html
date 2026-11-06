@@ -9,9 +9,12 @@ controller.</p>
 <li><b>On the LAN</b>: devices on the controller's network announce themselves every few
 seconds. The bridge listens (UDP 6666, 6667, 7000) and keeps their addresses current, so a
 DHCP change follows automatically.</li>
-<li><b>Through your Tuya account</b> (optional): with a Tuya IoT project's Access ID and Secret,
-the bridge fetches every linked account's device names and local keys. Devices on another
-network, or on protocol 3.5, can then be controlled through the cloud.</li>
+<li><b>Through your Tuya account</b> (optional, <b>Cloud Account</b>): <i>Smart Life</i> &mdash;
+enter the app's User Code (Me &gt; Settings &gt; Account and Security), run <b>Smart Life Login</b>
+and scan the QR code shown at <code>http://&lt;controller&gt;:8765/</code> with the app, once; or
+<i>Tuya IoT Project</i> &mdash; a developer project's Access ID and Secret. Either way the bridge
+fetches device names and local keys, and devices on another network or on protocol 3.5 can be
+controlled through the cloud.</li>
 </ul>
 <h3>Notes</h3>
 <ul>

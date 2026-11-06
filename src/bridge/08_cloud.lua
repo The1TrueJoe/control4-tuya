@@ -1,64 +1,72 @@
--- Tuya cloud: the IoT platform's OpenAPI, for device names and local keys from every app
--- account linked to the user's project, and for control of devices the LAN can't reach.
+-- Tuya cloud, the part both account types share: handing devices to the registry, converting
+-- values, polling cloud-controlled devices and sending them commands. How to sign in and
+-- talk to Tuya is a backend's job (08_iot.lua, 08_smartlife.lua), chosen by Cloud Account.
 --
--- Built to stay inside the free plan's monthly call quota and off the controller's CPU:
---   * one endpoint does both jobs: /v1.0/iot-01/associated-users/devices returns each
---     device's name, local key, online flag and current status, 50 per call. A key refresh
---     (every Key Refresh hours) and a status poll of cloud-controlled devices (every Cloud
---     Poll Interval, only while any child is watching) are the same paged request.
---   * the token is reused until it expires; a device's DP<->code spec is fetched once, the
---     first time it is controlled through the cloud, and kept with PersistSetValue.
---   * HTTP is Director's own C4:url; signing is C4:HMAC / C4:Hash.
--- Not here: Tuya's message queue (Pulsar). Cloud-controlled devices are polled, not pushed.
+-- Kept light on the controller and the account: HTTP is Director's own C4:url; a device's
+-- DP<->code map is fetched once and persisted; status is polled only while some child is
+-- controlling a device through the cloud, once per Cloud Poll Interval, in one batched
+-- request, plus one confirming read a few seconds after a command.
+--
+-- A backend is a table registered in BACKENDS with:
+--   configured()            enough settings to try
+--   start()                 sign in / restore tokens; sets CLOUD.ready when usable
+--   fetch(why)              every device: IngestDevice() each, then CloudStatus(...)
+--   poll(ids, why)          current status of these devices: IngestDevice() each
+--   spec(id, cb)            cb(spec) with spec.dp[dp] = { code }, spec.code[code] = dp
+--   command(id, body, cb)   body = '{"commands":[...]}'; cb(ok, why)
+--   stop()
 
-local HOSTS = {
-	['US'] = 'https://openapi.tuyaus.com',
-	['US East'] = 'https://openapi-ueaz.tuyaus.com',
-	['EU'] = 'https://openapi.tuyaeu.com',
-	['EU West'] = 'https://openapi-weaz.tuyaeu.com',
-	['China'] = 'https://openapi.tuyacn.com',
-	['India'] = 'https://openapi.tuyain.com',
-}
-local EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-local PAGE = 50
 local SPEC_KEY = 'tuya_bridge_specs'
 local BACKOFF_S = 600
 
+BACKENDS = {}
+
 CLOUD = {
-	ready = false, -- credentials set and a token was issued
-	token = nil, tokenExpires = 0,
-	specs = {}, -- device id -> { dp = { [dp] = { code, type } }, code = { [code] = dp } }
+	ready = false,
+	backend = nil,
+	specs = {}, -- device id -> { dp = { [dp] = { code } }, code = { [code] = dp } }
 	watch = {}, -- device id -> { [childId] = true }
 	backoffUntil = 0,
+	pollSeconds = 120,
 }
 
-local function Status(text)
+function CloudStatus(text)
 	UpdateDriverProperty('Cloud Status', text)
 end
 
-local function Configured()
-	return CLOUD.host and CLOUD.id ~= '' and CLOUD.secret ~= ''
+-- Tuya answers that mean "fix this in the Tuya app or console", reworded as what to do.
+local HINTS = {
+	['28841107'] = 'Tuya says the project can\'t use its data center. In the Tuya IoT console: start or extend '
+		.. 'the IoT Core trial (Cloud Services), authorize IoT Core for this project (Service API tab), and check '
+		.. 'the data center is enabled (Overview)',
+	['1106'] = 'Tuya says permission denied: link your Smart Life account to the project (Devices > Link App Account)',
+	['1004'] = 'Tuya rejected the signature: check Cloud Access ID and Secret',
+}
+
+function ExplainCloudError(json, fallback)
+	if (json and HINTS[tostring(json.code)]) then
+		return HINTS[tostring(json.code)] .. ' (' .. tostring(json.code) .. ')'
+	end
+	return fallback or (json and (tostring(json.msg) .. ' (' .. tostring(json.code) .. ')')) or 'no answer'
 end
 
--- Tuya's request signature: HMAC-SHA256 over client_id [+ token] + t + nonce + the request
--- (method, SHA-256 of the body, signed headers (none), path with sorted query).
-local function SignedHeaders(method, path, body, withToken)
-	local t = string.format('%.0f', os.time() * 1000)
-	local bodyHash = (body and body ~= '') and Sha256Hex(body) or EMPTY_SHA256
-	local toSign = method .. '\n' .. bodyHash .. '\n\n' .. path
-	local str = CLOUD.id .. (withToken and CLOUD.token or '') .. t .. toSign
-	local headers = {
-		client_id = CLOUD.id,
-		sign = string.upper(ToHex(HmacSha256(CLOUD.secret, str))),
-		t = t,
-		sign_method = 'HMAC-SHA256',
-		['Content-Type'] = 'application/json',
-	}
-	if (withToken) then headers.access_token = CLOUD.token end
-	return headers
+-- Rate-limit and quota answers (40000309, "frequency"/"limit" messages) back off for ten
+-- minutes rather than retrying into a bigger bill.
+function CloudThrottled(json)
+	local msg = string.lower(tostring(json and json.msg or ''))
+	if ((json and tostring(json.code) == '40000309') or string.find(msg, 'frequen', 1, true) or string.find(msg, 'limit', 1, true)) then
+		CLOUD.backoffUntil = os.time() + BACKOFF_S
+		return true
+	end
+	return false
 end
 
-local function Http(method, path, body, headers, callback)
+function CloudBackingOff()
+	return os.time() < CLOUD.backoffUntil
+end
+
+-- One HTTPS request through Director; callback(json) or callback(nil, why).
+function HttpJson(method, url, body, headers, callback)
 	local transfer = C4:url()
 	transfer:SetOptions({ fail_on_error = false, timeout = 20, connect_timeout = 10 })
 	transfer:OnDone(Tracked(function(_, responses, errCode, errMsg)
@@ -75,73 +83,10 @@ local function Http(method, path, body, headers, callback)
 		callback(json)
 	end, 'cloud'))
 	if (method == 'GET') then
-		transfer:Get(CLOUD.host .. path, headers)
+		transfer:Get(url, headers or {})
 	else
-		transfer:Post(CLOUD.host .. path, body or '', headers)
+		transfer:Post(url, body or '', headers or {})
 	end
-end
-
--- Tuya answers that say "fix this in the Tuya console", reworded as what to do there.
-local HINTS = {
-	['28841107'] = 'Tuya says the project can\'t use its data center. In the Tuya IoT console: start or extend '
-		.. 'the IoT Core trial (Cloud Services), authorize IoT Core for this project (Service API tab), and check '
-		.. 'the data center is enabled (Overview)',
-	['1106'] = 'Tuya says permission denied: link your Smart Life account to the project (Devices > Link App Account)',
-	['1004'] = 'Tuya rejected the signature: check Cloud Access ID and Secret',
-}
-
-local function Explain(json, fallback)
-	if (json and HINTS[tostring(json.code)]) then
-		return HINTS[tostring(json.code)] .. ' (' .. tostring(json.code) .. ')'
-	end
-	return fallback or (json and (tostring(json.msg) .. ' (' .. tostring(json.code) .. ')')) or 'no answer'
-end
-
-local function GetToken(callback)
-	local path = '/v1.0/token?grant_type=1'
-	Http('GET', path, nil, SignedHeaders('GET', path, nil, false), function(json, err)
-		if (json and json.success and json.result) then
-			CLOUD.token = json.result.access_token
-			CLOUD.tokenExpires = os.time() + (tonumber(json.result.expire_time) or 3600) - 60
-			CLOUD.ready = true
-			callback(true)
-		else
-			CLOUD.ready = false
-			local why = err or Explain(json)
-			Status('Sign-in failed: ' .. why)
-			callback(false, why)
-		end
-	end)
-end
-
--- Rate-limit and quota answers (Tuya codes 40000309 / "frequency" messages) back off for ten
--- minutes rather than retrying into a bigger bill.
-local function Throttled(json)
-	local msg = string.lower(tostring(json and json.msg or ''))
-	return (json and tostring(json.code) == '40000309') or string.find(msg, 'frequen', 1, true) or string.find(msg, 'limit', 1, true)
-end
-
--- A signed API call with the token, refreshing it once if Tuya says it expired.
-local function Api(method, path, body, callback, retried)
-	if (not Configured()) then callback(nil, 'cloud not configured') return end
-	if (os.time() < CLOUD.backoffUntil) then callback(nil, 'backing off after a rate-limit answer') return end
-	if (not CLOUD.token or os.time() >= CLOUD.tokenExpires) then
-		GetToken(function(ok, why)
-			if (ok) then Api(method, path, body, callback, retried) else callback(nil, why) end
-		end)
-		return
-	end
-	Http(method, path, body, SignedHeaders(method, path, body, true), function(json, err)
-		if (json and json.success) then
-			callback(json.result)
-		elseif (json and (tostring(json.code) == '1010' or tostring(json.code) == '1011') and not retried) then
-			CLOUD.token = nil
-			Api(method, path, body, callback, true)
-		else
-			if (Throttled(json)) then CLOUD.backoffUntil = os.time() + BACKOFF_S end
-			callback(nil, err or Explain(json))
-		end
-	end)
 end
 
 -- Value conversions between the cloud's JSON colour objects and the LAN's hex strings.
@@ -182,24 +127,29 @@ local function LocalToCloud(code, value)
 	return value
 end
 
--- A device's datapoint <-> code map, fetched once and persisted.
+-- A device's datapoint <-> code map, fetched once through the backend and persisted.
 local function WithSpec(deviceId, callback)
 	if (CLOUD.specs[deviceId]) then callback(CLOUD.specs[deviceId]) return end
-	Api('GET', '/v1.1/devices/' .. deviceId .. '/specifications', nil, function(result, err)
-		if (not result) then callback(nil, err) return end
-		local spec = { dp = {}, code = {} }
-		for _, list in ipairs({ result.functions or {}, result.status or {} }) do
-			for _, f in ipairs(list) do
-				if (f.dp_id and f.code) then
-					spec.dp[tostring(f.dp_id)] = { code = f.code, type = f.type }
-					spec.code[f.code] = tostring(f.dp_id)
-				end
-			end
+	if (not CLOUD.backend) then callback(nil, 'no cloud account') return end
+	CLOUD.backend.spec(deviceId, function(spec, err)
+		if (spec) then
+			CLOUD.specs[deviceId] = spec
+			pcall(function() C4:PersistSetValue(SPEC_KEY, CLOUD.specs) end)
 		end
-		CLOUD.specs[deviceId] = spec
-		pcall(function() C4:PersistSetValue(SPEC_KEY, CLOUD.specs) end)
-		callback(spec)
+		callback(spec, err)
 	end)
+end
+
+-- A spec is plain data (it is persisted): backends fill one from whatever their API returns.
+function NewSpec()
+	return { dp = {}, code = {} }
+end
+
+function SpecAdd(spec, dp, code)
+	if (dp and code) then
+		spec.dp[tostring(dp)] = { code = code }
+		spec.code[code] = tostring(dp)
+	end
 end
 
 local function TellWatchers(device)
@@ -219,52 +169,43 @@ local function TellWatchers(device)
 	end)
 end
 
--- One paged pass over every linked account's devices: names and keys into the registry,
--- current status to any child controlling that device through the cloud.
-local fetching = false
-local function FetchDevices(why)
-	if (fetching or not Configured()) then return end
-	fetching = true
-	local count = 0
-	local function page(lastRowKey)
-		local path = '/v1.0/iot-01/associated-users/devices?' ..
-			(lastRowKey and ('last_row_key=' .. lastRowKey .. '&') or '') .. 'size=' .. PAGE
-		Api('GET', path, nil, function(result, err)
-			if (not result) then
-				fetching = false
-				-- A failed sign-in already said so; don't bury it under a generic error.
-				if (CLOUD.ready) then Status('Error: ' .. tostring(err)) end
-				return
-			end
-			for _, dev in ipairs(result.devices or {}) do
-				count = count + 1
-				UpdateDevice(dev.id, {
-					name = dev.name, key = dev.local_key, category = dev.category,
-					product = dev.product_name, cloud = true,
-				})
-				local d = REGISTRY.devices[dev.id]
-				if (d) then d.online = dev.online end
-				TellWatchers({ id = dev.id, online = dev.online, status = dev.status })
-			end
-			if (result.has_more and result.last_row_key) then
-				page(result.last_row_key)
-			else
-				fetching = false
-				Status(string.format('OK: %d devices (%s %s)', count, why, os.date('%H:%M')))
-			end
-		end)
+-- A device as a backend found it: { id, name, key, category, product, online, status = {{code, value}} }.
+function IngestDevice(dev)
+	if (not dev or not dev.id) then return end
+	if (dev.name or dev.key) then
+		UpdateDevice(dev.id, { name = dev.name, key = dev.key, category = dev.category, product = dev.product, cloud = true })
 	end
-	page(nil)
+	local d = REGISTRY.devices[dev.id]
+	if (d) then d.online = dev.online end
+	TellWatchers(dev)
 end
 
 function CloudRefreshDevices(force)
 	if (force) then CLOUD.backoffUntil = 0 end
-	FetchDevices('refreshed')
+	if (CLOUD.backend and CLOUD.backend.configured()) then
+		CLOUD.backend.fetch('refreshed')
+	end
+end
+
+local function Watched()
+	local ids = {}
+	for id, children in pairs(CLOUD.watch) do
+		if (next(children)) then ids[#ids + 1] = id end
+	end
+	return ids
+end
+
+local function Poll(why)
+	local ids = Watched()
+	if (#ids > 0 and CLOUD.backend) then
+		CLOUD.backend.poll(ids, why)
+	end
 end
 
 -- Called by a child (through the bridge) to set datapoints on a device it can't reach locally.
 function CloudCommand(deviceId, dps)
-	if (not (CLOUD.ready or Configured()) or not deviceId) then return false end
+	local b = CLOUD.backend
+	if (not (b and b.configured()) or not deviceId) then return false end
 	WithSpec(deviceId, function(spec, err)
 		local commands = {}
 		for dp, value in pairs(spec and dps or {}) do
@@ -277,9 +218,8 @@ function CloudCommand(deviceId, dps)
 			UpdateDriverProperty('Last Error', 'cloud command for ' .. deviceId .. ': ' .. tostring(err or 'no matching datapoints'))
 			return
 		end
-		local body = '{"commands":[' .. table.concat(commands, ',') .. ']}'
-		Api('POST', '/v1.0/iot-03/devices/' .. deviceId .. '/commands', body, function(result, why)
-			if (result == nil) then
+		b.command(deviceId, '{"commands":[' .. table.concat(commands, ',') .. ']}', function(ok, why)
+			if (not ok) then
 				UpdateDriverProperty('Last Error', 'cloud command for ' .. deviceId .. ': ' .. tostring(why))
 				for childId, _ in pairs(CLOUD.watch[deviceId] or {}) do
 					SendToChild(childId, 'TUYA_CLOUD_FAILED', { DEVICE_ID = deviceId, WHY = tostring(why) })
@@ -289,24 +229,17 @@ function CloudCommand(deviceId, dps)
 			-- Confirm the result once, a few seconds later, instead of waiting for the next poll.
 			CLOUD.confirm = CLOUD.confirm or SetTimer(4000, function()
 				CLOUD.confirm = nil
-				FetchDevices('confirmed')
+				Poll('confirmed')
 			end)
 		end)
 	end)
 	return true
 end
 
-local function Watching()
-	for _, children in pairs(CLOUD.watch) do
-		if (next(children)) then return true end
-	end
-	return false
-end
-
 local function SchedulePoll()
 	CLOUD.pollTimer = CancelTimer(CLOUD.pollTimer)
-	if (Watching()) then
-		CLOUD.pollTimer = SetTimer(CLOUD.pollSeconds * 1000, function() FetchDevices('polled') end, true)
+	if (#Watched() > 0) then
+		CLOUD.pollTimer = SetTimer(CLOUD.pollSeconds * 1000, function() Poll('polled') end, true)
 	end
 end
 
@@ -315,32 +248,42 @@ function CloudWatch(deviceId, childId, on)
 	CLOUD.watch[deviceId] = CLOUD.watch[deviceId] or {}
 	local was = CLOUD.watch[deviceId][tostring(childId)]
 	CLOUD.watch[deviceId][tostring(childId)] = on or nil
-	if (on and not was) then FetchDevices('watching') end
+	if (on and not was) then Poll('watching') end
+	SchedulePoll()
+end
+
+-- The backend calls this once it can make requests (signed in, tokens restored).
+function CloudReady()
+	CLOUD.ready = true
+	CLOUD.backend.fetch('signed in')
+	local hours = math.max(1, tonumber(Properties['Key Refresh (hours)']) or 12)
+	CLOUD.refreshTimer = CancelTimer(CLOUD.refreshTimer)
+	CLOUD.refreshTimer = SetTimer(hours * 3600 * 1000, function() CLOUD.backend.fetch('refreshed') end, true)
 	SchedulePoll()
 end
 
 function StartCloud()
 	StopCloud()
-	CLOUD.host = HOSTS[Properties['Cloud Region'] or 'US'] or HOSTS['US']
-	CLOUD.id = Trim(Properties['Cloud Access ID'])
-	CLOUD.secret = Trim(Properties['Cloud Access Secret'])
 	CLOUD.pollSeconds = math.max(60, tonumber(Properties['Cloud Poll Interval (seconds)']) or 120)
-	CLOUD.token, CLOUD.ready, CLOUD.backoffUntil = nil, false, 0
-	if (not Configured()) then
-		Status('Not configured (LAN only)')
+	CLOUD.ready, CLOUD.backoffUntil = false, 0
+	CLOUD.backend = BACKENDS[Properties['Cloud Account'] or '']
+	if (not CLOUD.backend) then
+		CloudStatus('Off (LAN only)')
 		return
 	end
 	local ok, specs = pcall(function() return C4:PersistGetValue(SPEC_KEY) end)
 	if (ok and type(specs) == 'table') then CLOUD.specs = specs end
-	Status('Signing in')
-	FetchDevices('signed in')
-	local hours = math.max(1, tonumber(Properties['Key Refresh (hours)']) or 12)
-	CLOUD.refreshTimer = SetTimer(hours * 3600 * 1000, function() FetchDevices('refreshed') end, true)
-	SchedulePoll()
+	if (not CLOUD.backend.configured()) then
+		CloudStatus('Not configured (LAN only)')
+		return
+	end
+	CLOUD.backend.start()
 end
 
 function StopCloud()
 	CLOUD.refreshTimer = CancelTimer(CLOUD.refreshTimer)
 	CLOUD.pollTimer = CancelTimer(CLOUD.pollTimer)
 	CLOUD.confirm = CancelTimer(CLOUD.confirm)
+	if (CLOUD.backend and CLOUD.backend.stop) then CLOUD.backend.stop() end
+	CLOUD.ready = false
 end
