@@ -109,3 +109,7 @@ The tests run each built `driver.lua` in Lua 5.1 against a fake device. The fake
 checked against tinytuya (the reference client), so passing tests mean the driver speaks
 the same protocol tinytuya does. Not covered by the harness: Director itself (its crypto
 and TCP APIs are mocked here), and Tuya firmware quirks beyond the ones listed above.
+
+## License
+
+MIT. Not affiliated with or endorsed by Control4 / Snap One.
