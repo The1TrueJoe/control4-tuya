@@ -141,6 +141,12 @@
 				<readonly>false</readonly>
 			</property>
 			<property>
+				<name>Available Devices</name>
+				<default/>
+				<type>STRING</type>
+				<readonly>true</readonly>
+			</property>
+			<property>
 				<name>Control Path</name>
 				<type>LIST</type>
 				<items>

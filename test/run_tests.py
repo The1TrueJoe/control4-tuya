@@ -396,6 +396,7 @@ def bridge_gets_names_and_keys_from_the_cloud_and_child_picks_from_the_list():
     assert d.run(3, lambda: (bridge.properties.get("Cloud Status") or "").startswith("OK: 2 devices")), bridge.properties
     c = child(d, PLUG, fake)
     assert d.run(3, lambda: "Porch Plug (" + DEV + ")" in c.property_lists.get("Tuya Device", "")), c.property_lists
+    assert "Garage Plug (bfotherplug000000001)" in c.properties.get("Available Devices", ""), c.properties
     bridge.broadcast(fake.broadcast_packet("127.0.0.1"), "127.0.0.1")
     c.set_property("Tuya Device", "Porch Plug (" + DEV + ")")
     assert d.run(4, lambda: c.status() == "Online"), (c.properties, bridge.properties)

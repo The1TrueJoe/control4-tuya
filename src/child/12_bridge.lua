@@ -155,6 +155,8 @@ function HandleBridgeCommand(command, p)
 		local current = Properties['Tuya Device'] or NONE
 		local items = (p.ITEMS and p.ITEMS ~= '') and (NONE .. ',' .. p.ITEMS) or NONE
 		pcall(function() C4:UpdatePropertyList('Tuya Device', items, current) end)
+		-- The same list as plain text, for tools that can't show a runtime dropdown.
+		UpdateDriverProperty('Available Devices', (p.ITEMS and p.ITEMS ~= '') and string.gsub(p.ITEMS, ',', ', ') or 'none yet')
 	elseif (command == 'TUYA_INFO') then
 		ApplyInfo(p)
 	elseif (command == 'TUYA_STATUS') then
