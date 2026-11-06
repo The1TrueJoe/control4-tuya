@@ -96,9 +96,9 @@ vendor/       qrcode-generator (MIT), embedded in the bridge for the login page
 Two small libraries live in their own repos; clone them next to this one (or point
 `C4_AES_GCM` / `C4_TEST_HARNESS` at them):
 
-- [control4-aes-gcm](../control4-aes-gcm): AES-GCM on Director's AES-ECB (the bridge's Smart Life
+- [control4-aes-gcm](https://github.com/The1TrueJoe/control4-aes-gcm): AES-GCM on Director's AES-ECB (the bridge's Smart Life
   login uses it).
-- [control4-test-harness](../control4-test-harness): a mock Director for running drivers in tests.
+- [control4-test-harness](https://github.com/The1TrueJoe/control4-test-harness): a mock Director for running drivers in tests.
 
 ```sh
 pip install lupa cryptography tinytuya
