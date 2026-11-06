@@ -73,6 +73,7 @@ function OnDriverLateInit()
 		ApplyProperty(name)
 	end
 	LATE_INIT_DONE = true
+	SmartLifeVariables()
 	LoadRegistry()
 	StartDiscovery()
 	StartCloud()
@@ -108,11 +109,18 @@ local function HandleCommand(strCommand, tParams)
 	elseif (command == 'FORGET_DEVICES') then
 		ForgetDevices()
 	elseif (command == 'SMART_LIFE_LOGIN') then
-		if (Properties['Cloud Account'] ~= 'Smart Life') then
-			UpdateDriverProperty('Smart Life Login', 'Set Cloud Account to Smart Life first')
-		else
-			SmartLifeStartLogin()
+		-- From the Smart Life Login tab (with USER_CODE) or the action (uses the property).
+		local code = Trim(tParams.USER_CODE)
+		if (code ~= '') then
+			UpdateDriverProperty('Smart Life User Code', code)
+			if (Properties) then Properties['Smart Life User Code'] = code end
 		end
+		if (Properties['Cloud Account'] ~= 'Smart Life') then
+			UpdateDriverProperty('Cloud Account', 'Smart Life')
+			Properties['Cloud Account'] = 'Smart Life'
+			StartCloud()
+		end
+		SmartLifeStartLogin(code ~= '' and code or nil)
 	elseif (command == 'SMART_LIFE_LOGOUT') then
 		SmartLifeLogout()
 	else

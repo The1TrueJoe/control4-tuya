@@ -496,7 +496,7 @@ def smartlife_signed_in(sl, **extra):
     d, bridge = bridge_setup(sl, **{"Cloud Account": "Smart Life", "Smart Life User Code": sl.user_code, **extra})
     bridge.lua.globals().SMARTLIFE.loginPollMs = 100
     bridge.g("ExecuteCommand")(b"SMART_LIFE_LOGIN", bridge.to_lua({}))
-    assert d.run(2, lambda: "scan the code" in (bridge.properties.get("Smart Life Login") or "")), bridge.properties
+    assert d.run(2, lambda: "scan the code" in (bridge.properties.get("Smart Life Login") or "").lower()), bridge.properties
     return d, bridge
 
 
@@ -510,6 +510,7 @@ def smartlife_qr_login_serves_the_code_then_lists_devices_with_keys():
     assert 8765 in bridge.servers
     page = bridge.http_get(8765, "/").decode()
     assert page.startswith("HTTP/1.1 200") and sl.qr in page and "qrcode(" in page and "createSvgTag" in page, page[:300]
+    assert 'src="http://192.0.2.10/c4z/tuya_bridge/www/qrcode.js"' in page, page[:600]
     assert d.run(0.5, lambda: False) is False  # not signed in until the app confirms
     sl.scan()
     assert d.run(3, lambda: (bridge.properties.get("Cloud Status") or "").startswith("OK: 2 devices in 1 home")), bridge.properties
@@ -572,6 +573,24 @@ def smartlife_refreshes_an_expired_token_and_survives_a_restart():
     b2.init()
     assert d2.run(3, lambda: "OK: 1" in (b2.properties.get("Cloud Status") or "")), b2.properties
     assert sl.qr is not None and b2.properties.get("Smart Life Login") == "Signed in"
+
+
+@test
+def smartlife_login_from_the_web_tab():
+    # The tab sends the User Code with the command and reads the QR payload from a variable.
+    sl = FakeSmartLife()
+    sl.add(DEV, "Porch Plug", KEY, "plug")
+    d, bridge = bridge_setup(sl, **{"Cloud Account": "Off", "Smart Life User Code": ""})
+    bridge.lua.globals().SMARTLIFE.loginPollMs = 100
+    assert bridge.variables.get("SMART_LIFE_STATUS") is not None, bridge.variables
+    bridge.g("ExecuteCommand")(b"SMART_LIFE_LOGIN", bridge.to_lua({"USER_CODE": sl.user_code}))
+    assert d.run(2, lambda: sl.qr and bridge.variables.get("SMART_LIFE_QR") == "tuyaSmart--qrLogin?token=" + sl.qr), bridge.variables
+    assert bridge.properties.get("Cloud Account") == "Smart Life" and bridge.properties.get("Smart Life User Code") == sl.user_code
+    assert "Smart Life Login tab" in bridge.variables.get("SMART_LIFE_STATUS", ""), bridge.variables
+    sl.scan()
+    assert d.run(3, lambda: bridge.variables.get("SMART_LIFE_STATUS", "").startswith("Signed in")), bridge.variables
+    assert bridge.variables.get("SMART_LIFE_QR") == ""
+    assert d.run(3, lambda: "OK: 1" in (bridge.properties.get("Cloud Status") or "")), bridge.properties
 
 
 @test

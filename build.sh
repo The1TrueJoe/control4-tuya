@@ -52,15 +52,6 @@ for variant in light plug bridge; do
       echo "-- ${f}"
       sed "s/^DRIVER_VERSION = .*/DRIVER_VERSION = '${VERSION}'/" "$f"
     done
-    if [ "$variant" = bridge ]; then
-      # The login page's QR code library, comments and indentation stripped, license kept.
-      echo
-      echo "-- vendor/qrcode-generator/qrcode.js (MIT, Kazuhiko Arase)"
-      echo "QR_JS = [==["
-      echo "// QR Code Generator for JavaScript, Copyright (c) 2009 Kazuhiko Arase, MIT license"
-      sed -e 's/^[[:space:]]*//' -e '/^\/\//d' -e '/^$/d' vendor/qrcode-generator/qrcode.js
-      echo "]==]"
-    fi
     for lib in $(libraries "$variant"); do
       echo
       echo "-- $(basename "$lib") (from $(basename "$(dirname "$lib")"))"
@@ -72,6 +63,8 @@ for variant in light plug bridge; do
   # Stamp a staging copy, so building never leaves driver.xml modified in git.
   stage=$(mktemp -d)
   cp -R "$dir/driver.xml" "$out" "$dir/www" "$stage/"
+  # The bridge's login tab draws the QR code with the vendored qrcode-generator.
+  [ "$variant" = bridge ] && cp vendor/qrcode-generator/qrcode.js "$stage/www/"
   sed -i '' "s|<modified>.*</modified>|<modified>${BUILD_DATE}</modified>|" "$stage/driver.xml"
   sed -i '' "s|<version>[^<]*</version>|<version>${VERSION}</version>|" "$stage/driver.xml"
 

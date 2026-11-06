@@ -17,6 +17,9 @@
 	<config>
 		<script file="driver.lua"/>
 		<documentation file="www/documentation.html"/>
+		<tabs>
+			<tab name="Smart Life Login" file="login.html"/>
+		</tabs>
 		<properties>
 			<property>
 				<name>Driver Version</name>

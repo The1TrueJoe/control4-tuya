@@ -1,7 +1,7 @@
--- The Smart Life login page: while a QR login is in progress the bridge serves one page on
--- http://<controller>:8765/ that draws the QR code (with the vendored qrcode-generator, QR_JS,
--- embedded by build.sh) for the Smart Life app to scan. Composer properties can't show an
--- image; any browser on the LAN can.
+-- The Smart Life login page, for when Composer's Smart Life Login tab isn't at hand: while a QR
+-- login is in progress the bridge serves one page on http://<controller>:8765/ that draws the QR
+-- code. The QR library is the bridge's own www/qrcode.js, which the controller's web server
+-- already serves at /c4z/tuya_bridge/www/, so it isn't kept in the driver's memory.
 --
 -- Director's servers share one callback pair: TCP connections to this port are tracked by
 -- handle (OnServerConnectionStatusChanged), everything else arriving on OnServerDataIn is a
@@ -48,6 +48,10 @@ function HideLoginQr()
 	if (was) then RestartServers() end
 end
 
+local function QrScriptUrl()
+	return 'http://' .. (ControllerAddress() or '') .. '/c4z/tuya_bridge/www/qrcode.js'
+end
+
 local function Escape(s)
 	return (string.gsub(tostring(s), '[<>&"\'\\]', function(c) return string.format('\\u%04x', string.byte(c)) end))
 end
@@ -57,7 +61,8 @@ local function Page()
 	if (LOGINPAGE.qr) then
 		body = '<p>Scan this with the <b>Smart Life</b> app (Me &rarr; scan icon, top right), then confirm.</p>' ..
 			'<div id="qr"></div><p class="small">This page stops working once you are signed in or after 5 minutes.</p>' ..
-			'<script>' .. (QR_JS or '') .. '\nvar q = qrcode(0, "M"); q.addData("' .. Escape(LOGINPAGE.qr) .. '"); q.make();' ..
+			'<script src="' .. QrScriptUrl() .. '"></script>' ..
+			'<script>var q = qrcode(0, "M"); q.addData("' .. Escape(LOGINPAGE.qr) .. '"); q.make();' ..
 			'document.getElementById("qr").innerHTML = q.createSvgTag({ cellSize: 6, margin: 4 });</script>'
 	else
 		body = '<p>No Smart Life login is in progress. Run <b>Smart Life Login</b> on the Tuya Bridge in Composer.</p>'

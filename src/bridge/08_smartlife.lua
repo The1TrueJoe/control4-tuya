@@ -21,6 +21,24 @@ local NONCE_CHARS = 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678'
 -- session: { userCode, endpoint, access, refresh, uid, expires, terminal }
 SMARTLIFE = { login = nil, loginPollMs = 3000 }
 
+-- The login status, shown in the Smart Life Login property and the SMART_LIFE_STATUS variable
+-- (which the Smart Life Login web tab reads).
+function SetLoginStatus(text)
+	UpdateDriverProperty('Smart Life Login', text)
+	pcall(function() C4:SetVariable('SMART_LIFE_STATUS', text) end)
+end
+
+local function SetQr(payload)
+	pcall(function() C4:SetVariable('SMART_LIFE_QR', payload or '') end)
+end
+
+function SmartLifeVariables()
+	pcall(function()
+		C4:AddVariable('SMART_LIFE_STATUS', 'Not signed in', 'STRING', true, false)
+		C4:AddVariable('SMART_LIFE_QR', '', 'STRING', true, true)
+	end)
+end
+
 local function Save()
 	pcall(function() C4:PersistSetValue(PERSIST_KEY, SMARTLIFE.session or {}) end)
 end
@@ -189,10 +207,10 @@ local function FetchAll(why)
 end
 
 -- The QR login. Called by the Smart Life Login action.
-function SmartLifeStartLogin()
-	local userCode = Trim(Properties['Smart Life User Code'])
+function SmartLifeStartLogin(userCode)
+	userCode = Trim(userCode or Properties['Smart Life User Code'])
 	if (userCode == '') then
-		UpdateDriverProperty('Smart Life Login', 'Enter your User Code first (Smart Life: Me > Settings > Account and Security)')
+		SetLoginStatus('Enter your User Code first (Smart Life: Me > Settings > Account and Security)')
 		return
 	end
 	SmartLifeStopLogin()
@@ -201,19 +219,21 @@ function SmartLifeStartLogin()
 	HttpJson('POST', url, '', {}, function(json, err)
 		local qr = json and json.success and json.result and json.result.qrcode
 		if (not qr) then
-			UpdateDriverProperty('Smart Life Login', 'Could not start: ' .. tostring(err or ExplainCloudError(json)))
+			SetLoginStatus('Could not start: ' .. tostring(err or ExplainCloudError(json)))
 			return
 		end
 		SMARTLIFE.login = { token = qr, userCode = userCode, tries = 0 }
-		local where = ShowLoginQr('tuyaSmart--qrLogin?token=' .. qr)
-		UpdateDriverProperty('Smart Life Login', 'Open ' .. where .. ' and scan the code with the Smart Life app (5 minutes)')
+		local payload = 'tuyaSmart--qrLogin?token=' .. qr
+		SetQr(payload)
+		local where = ShowLoginQr(payload)
+		SetLoginStatus('Scan the code in the Smart Life Login tab (or at ' .. where .. ') with the Smart Life app (5 minutes)')
 		SMARTLIFE.loginTimer = SetTimer(SMARTLIFE.loginPollMs, function()
 			local login = SMARTLIFE.login
 			if (not login) then return end
 			login.tries = login.tries + 1
 			if (login.tries > LOGIN_TRIES) then
 				SmartLifeStopLogin()
-				UpdateDriverProperty('Smart Life Login', 'The code expired. Run Smart Life Login again.')
+				SetLoginStatus('The code expired. Run Smart Life Login again.')
 				return
 			end
 			local pollUrl = LOGIN_HOST .. '/v1.0/m/life/home-assistant/qrcode/tokens/' .. login.token ..
@@ -228,7 +248,7 @@ function SmartLifeStartLogin()
 				}
 				Save()
 				SmartLifeStopLogin()
-				UpdateDriverProperty('Smart Life Login', 'Signed in' .. (res.username and (' as ' .. tostring(res.username)) or ''))
+				SetLoginStatus('Signed in' .. (res.username and (' as ' .. tostring(res.username)) or ''))
 				CloudReady()
 			end)
 		end, true)
@@ -238,6 +258,7 @@ end
 function SmartLifeStopLogin()
 	SMARTLIFE.loginTimer = CancelTimer(SMARTLIFE.loginTimer)
 	SMARTLIFE.login = nil
+	SetQr(nil)
 	HideLoginQr()
 end
 
@@ -246,7 +267,7 @@ function SmartLifeLogout()
 	SMARTLIFE.session = nil
 	Save()
 	CLOUD.ready = false
-	UpdateDriverProperty('Smart Life Login', 'Signed out')
+	SetLoginStatus('Signed out')
 	CloudStatus('Not signed in (LAN only)')
 end
 
@@ -255,7 +276,7 @@ BACKENDS['Smart Life'] = {
 	start = function()
 		Load()
 		if (SMARTLIFE.session) then
-			UpdateDriverProperty('Smart Life Login', 'Signed in')
+			SetLoginStatus('Signed in')
 			CloudReady()
 		else
 			CloudStatus('Not signed in: enter your User Code and run Smart Life Login')
